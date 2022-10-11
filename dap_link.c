@@ -3,7 +3,40 @@
 #include <m-string.h>
 #include "dap.h"
 #include "dap_usb.h"
+#include "dap_v2_usb.h"
 #include "dap_config.h"
+
+typedef enum {
+    DapVersion1,
+    DapVersion2,
+} DapVersion;
+
+#define DAP_DEFAULT_VERSION DapVersion1
+
+typedef struct {
+    bool (*tx)(uint8_t* buffer, uint8_t size);
+    void (*set_context)(void* context);
+    void (*set_rx_callback)(DapRxCallback callback);
+    void (*set_state_callback)(DapStateCallback callback);
+    FuriHalUsbInterface* interface;
+} DapLinkIf;
+
+static DapLinkIf dap_interface[2] = {
+    {
+        .tx = dap_usb_tx,
+        .set_context = dap_usb_set_context,
+        .set_rx_callback = dap_usb_set_rx_callback,
+        .set_state_callback = dap_usb_set_state_callback,
+        .interface = &dap_usb_hid,
+    },
+    {
+        .tx = dap_v2_usb_tx,
+        .set_context = dap_v2_usb_set_context,
+        .set_rx_callback = dap_v2_usb_set_rx_callback,
+        .set_state_callback = dap_v2_usb_set_state_callback,
+        .interface = &dap_v2_usb_hid,
+    },
+};
 
 typedef struct {
     FuriHalUsbInterface* usb_config_prev;
@@ -80,19 +113,19 @@ static void dap_app_usb_start(DapApp* dap_app) {
     furi_assert(dap_app);
     dap_app->usb_config_prev = furi_hal_usb_get_config();
 
-    dap_usb_set_context(dap_app->queue);
-    dap_usb_set_rx_callback(dap_app_rx_callback);
-    dap_usb_set_state_callback(dap_app_state_callback);
+    dap_interface[DAP_DEFAULT_VERSION].set_context(dap_app->queue);
+    dap_interface[DAP_DEFAULT_VERSION].set_rx_callback(dap_app_rx_callback);
+    dap_interface[DAP_DEFAULT_VERSION].set_state_callback(dap_app_state_callback);
 
-    furi_hal_usb_set_config(&dap_usb_hid, NULL);
+    furi_hal_usb_set_config(dap_interface[DAP_DEFAULT_VERSION].interface, NULL);
 }
 
 static void dap_app_usb_stop(DapApp* dap_app) {
     furi_assert(dap_app);
     furi_hal_usb_set_config(dap_app->usb_config_prev, NULL);
-    dap_usb_set_rx_callback(NULL);
-    dap_usb_set_state_callback(NULL);
-    dap_usb_set_context(NULL);
+    dap_interface[DAP_DEFAULT_VERSION].set_rx_callback(NULL);
+    dap_interface[DAP_DEFAULT_VERSION].set_state_callback(NULL);
+    dap_interface[DAP_DEFAULT_VERSION].set_context(NULL);
 }
 
 static void dap_app_process(DapApp* dap_app, DapPacket* rx_packet) {
@@ -100,7 +133,7 @@ static void dap_app_process(DapApp* dap_app, DapPacket* rx_packet) {
     DapPacket tx_packet;
     memset(&tx_packet, 0, sizeof(DapPacket));
     dap_process_request(rx_packet->data, rx_packet->size, tx_packet.data, DAP_CONFIG_PACKET_SIZE);
-    dap_usb_tx(tx_packet.data, DAP_CONFIG_PACKET_SIZE);
+    dap_interface[DAP_DEFAULT_VERSION].tx(tx_packet.data, DAP_CONFIG_PACKET_SIZE);
 }
 
 int32_t dap_link_app(void* p) {

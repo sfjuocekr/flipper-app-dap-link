@@ -18,7 +18,7 @@
 
 #define DAP_HID_EP_SIZE 64
 
-#define DAP_HID_INTERVAL 1
+#define DAP_HID_INTERVAL 2
 
 #define DAP_HID_VID 0x6666
 #define DAP_HID_PID 0x9930
@@ -163,7 +163,7 @@ void furi_console_log_printf(const char* format, ...) {
 #define furi_console_log_printf(...)
 #endif
 
-bool dap_usb_tx(uint8_t* buffer, uint8_t size) {
+bool dap_v2_usb_tx(uint8_t* buffer, uint8_t size) {
     if((dap_state.semaphore == NULL) || (dap_state.connected == false)) return false;
 
     furi_check(furi_semaphore_acquire(dap_state.semaphore, FuriWaitForever) == FuriStatusOk);
@@ -177,15 +177,15 @@ bool dap_usb_tx(uint8_t* buffer, uint8_t size) {
     return false;
 }
 
-void dap_usb_set_context(void* context) {
+void dap_v2_usb_set_context(void* context) {
     dap_state.context = context;
 }
 
-void dap_usb_set_rx_callback(DapRxCallback callback) {
+void dap_v2_usb_set_rx_callback(DapRxCallback callback) {
     dap_state.rx_callback = callback;
 }
 
-void dap_usb_set_state_callback(DapStateCallback callback) {
+void dap_v2_usb_set_state_callback(DapStateCallback callback) {
     dap_state.state_callback = callback;
 }
 
@@ -202,7 +202,7 @@ static const struct usb_string_descriptor dev_manuf_descr =
 static const struct usb_string_descriptor dev_prod_descr = USB_STRING_DESC("CMSIS-DAP Adapter");
 static const struct usb_string_descriptor dev_serial_descr = USB_STRING_DESC("01234567890ABCDEF");
 
-FuriHalUsbInterface dap_usb_hid = {
+FuriHalUsbInterface dap_v2_usb_hid = {
     .init = hid_init,
     .deinit = hid_deinit,
     .wakeup = hid_on_wakeup,
