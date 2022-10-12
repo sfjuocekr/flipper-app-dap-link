@@ -1,13 +1,21 @@
 #pragma once
-#include "dap_usb.h"
 #include <furi_hal_usb.h>
 
 extern FuriHalUsbInterface dap_v2_usb_hid;
 
-bool dap_v2_usb_tx(uint8_t* buffer, uint8_t size);
+// receive callback type
+typedef void (*DapRxCallback)(uint8_t* buffer, uint8_t size, void* context);
 
-void dap_v2_usb_set_context(void* context);
+typedef void (*DapStateCallback)(bool state, void* context);
+
+bool dap_v1_usb_tx(uint8_t* buffer, uint8_t size);
+
+void dap_v1_usb_set_rx_callback(DapRxCallback callback);
+
+bool dap_v2_usb_tx(uint8_t* buffer, uint8_t size);
 
 void dap_v2_usb_set_rx_callback(DapRxCallback callback);
 
-void dap_v2_usb_set_state_callback(DapStateCallback callback);
+void dap_common_usb_set_context(void* context);
+
+void dap_common_usb_set_state_callback(DapStateCallback callback);

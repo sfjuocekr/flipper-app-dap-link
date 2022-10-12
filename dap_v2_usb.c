@@ -2,7 +2,7 @@
 #include "usb.h"
 #include "usb_std.h"
 #include "usb_hid.h"
-#include "dap_usb.h"
+#include "dap_v2_usb.h"
 #include <furi_hal_console.h>
 
 // #define DAP_USB_LOG
@@ -23,6 +23,7 @@
 
 #define DAP_HID_EP_SIZE 64
 
+#define DAP_BULK_INTERVAL 0
 #define DAP_HID_INTERVAL 1
 
 #define DAP_HID_VID 0x6666
@@ -197,7 +198,7 @@ static const struct HidConfigDescriptor hid_cfg_desc = {
             .bEndpointAddress = DAP_HID_EP_BULK_OUT,
             .bmAttributes = USB_EPTYPE_BULK,
             .wMaxPacketSize = DAP_HID_EP_SIZE,
-            .bInterval = 0,
+            .bInterval = DAP_BULK_INTERVAL,
         },
 
     .bulk_ep_in =
@@ -207,25 +208,29 @@ static const struct HidConfigDescriptor hid_cfg_desc = {
             .bEndpointAddress = DAP_HID_EP_BULK_IN,
             .bmAttributes = USB_EPTYPE_BULK,
             .wMaxPacketSize = DAP_HID_EP_SIZE,
-            .bInterval = 0,
+            .bInterval = DAP_BULK_INTERVAL,
         },
 };
 
 typedef struct {
-    FuriSemaphore* semaphore;
+    FuriSemaphore* semaphore_v1;
+    FuriSemaphore* semaphore_v2;
     bool connected;
     usbd_device* usb_dev;
     DapStateCallback state_callback;
-    DapRxCallback rx_callback;
+    DapRxCallback rx_callback_v1;
+    DapRxCallback rx_callback_v2;
     void* context;
 } DAPState;
 
 static DAPState dap_state = {
-    .semaphore = NULL,
+    .semaphore_v1 = NULL,
+    .semaphore_v2 = NULL,
     .connected = false,
     .usb_dev = NULL,
     .state_callback = NULL,
-    .rx_callback = NULL,
+    .rx_callback_v1 = NULL,
+    .rx_callback_v2 = NULL,
     .context = NULL,
 };
 
@@ -246,29 +251,49 @@ void furi_console_log_printf(const char* format, ...) {
 #define furi_console_log_printf(...)
 #endif
 
-bool dap_v2_usb_tx(uint8_t* buffer, uint8_t size) {
-    if((dap_state.semaphore == NULL) || (dap_state.connected == false)) return false;
+bool dap_v1_usb_tx(uint8_t* buffer, uint8_t size) {
+    if((dap_state.semaphore_v1 == NULL) || (dap_state.connected == false)) return false;
 
-    // furi_check(furi_semaphore_acquire(dap_state.semaphore, FuriWaitForever) == FuriStatusOk);
+    furi_check(furi_semaphore_acquire(dap_state.semaphore_v1, FuriWaitForever) == FuriStatusOk);
+
+    if(dap_state.connected) {
+        int32_t len = usbd_ep_write(dap_state.usb_dev, DAP_HID_EP_IN, buffer, size);
+        UNUSED(len);
+        furi_console_log_printf("tx %ld", len);
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool dap_v2_usb_tx(uint8_t* buffer, uint8_t size) {
+    if((dap_state.semaphore_v2 == NULL) || (dap_state.connected == false)) return false;
+
+    furi_check(furi_semaphore_acquire(dap_state.semaphore_v2, FuriWaitForever) == FuriStatusOk);
 
     if(dap_state.connected) {
         int32_t len = usbd_ep_write(dap_state.usb_dev, DAP_HID_EP_BULK_IN, buffer, size);
         UNUSED(len);
         furi_console_log_printf("tx %ld", len);
+        return true;
+    } else {
+        return false;
     }
-
-    return false;
 }
 
-void dap_v2_usb_set_context(void* context) {
-    dap_state.context = context;
+void dap_v1_usb_set_rx_callback(DapRxCallback callback) {
+    dap_state.rx_callback_v1 = callback;
 }
 
 void dap_v2_usb_set_rx_callback(DapRxCallback callback) {
-    dap_state.rx_callback = callback;
+    dap_state.rx_callback_v2 = callback;
 }
 
-void dap_v2_usb_set_state_callback(DapStateCallback callback) {
+void dap_common_usb_set_context(void* context) {
+    dap_state.context = context;
+}
+
+void dap_common_usb_set_state_callback(DapStateCallback callback) {
     dap_state.state_callback = callback;
 }
 
@@ -300,7 +325,8 @@ static void hid_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     UNUSED(ctx);
 
     dap_state.usb_dev = dev;
-    if(dap_state.semaphore == NULL) dap_state.semaphore = furi_semaphore_alloc(1, 1);
+    if(dap_state.semaphore_v1 == NULL) dap_state.semaphore_v1 = furi_semaphore_alloc(1, 1);
+    if(dap_state.semaphore_v2 == NULL) dap_state.semaphore_v2 = furi_semaphore_alloc(1, 1);
 
     usb_hid.dev_descr->idVendor = DAP_HID_VID;
     usb_hid.dev_descr->idProduct = DAP_HID_PID;
@@ -314,8 +340,10 @@ static void hid_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
 static void hid_deinit(usbd_device* dev) {
     dap_state.usb_dev = NULL;
 
-    furi_semaphore_free(dap_state.semaphore);
-    dap_state.semaphore = NULL;
+    furi_semaphore_free(dap_state.semaphore_v1);
+    furi_semaphore_free(dap_state.semaphore_v2);
+    dap_state.semaphore_v1 = NULL;
+    dap_state.semaphore_v2 = NULL;
 
     usbd_reg_config(dev, NULL);
     usbd_reg_control(dev, NULL);
@@ -350,7 +378,7 @@ static void hid_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
 
     switch(event) {
     case usbd_evt_eptx:
-        furi_semaphore_release(dap_state.semaphore);
+        furi_semaphore_release(dap_state.semaphore_v1);
         furi_console_log_printf("tx complete");
         break;
     case usbd_evt_eprx:
@@ -359,8 +387,8 @@ static void hid_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
 
         len = ((len < 0) ? 0 : len);
 
-        if(dap_state.rx_callback != NULL) {
-            dap_state.rx_callback(data, len, dap_state.context);
+        if(dap_state.rx_callback_v1 != NULL) {
+            dap_state.rx_callback_v1(data, len, dap_state.context);
         }
     default:
         break;
@@ -375,7 +403,7 @@ static void hid_txrx_ep_bulk_callback(usbd_device* dev, uint8_t event, uint8_t e
 
     switch(event) {
     case usbd_evt_eptx:
-        furi_semaphore_release(dap_state.semaphore);
+        furi_semaphore_release(dap_state.semaphore_v2);
         furi_console_log_printf("bulk tx complete");
         break;
     case usbd_evt_eprx:
@@ -384,8 +412,8 @@ static void hid_txrx_ep_bulk_callback(usbd_device* dev, uint8_t event, uint8_t e
 
         len = ((len < 0) ? 0 : len);
 
-        if(dap_state.rx_callback != NULL) {
-            dap_state.rx_callback(data, len, dap_state.context);
+        if(dap_state.rx_callback_v2 != NULL) {
+            dap_state.rx_callback_v2(data, len, dap_state.context);
         }
     default:
         break;
@@ -399,23 +427,22 @@ static usbd_respond hid_ep_config(usbd_device* dev, uint8_t cfg) {
         usbd_ep_deconfig(dev, DAP_HID_EP_IN);
         usbd_ep_deconfig(dev, DAP_HID_EP_BULK_IN);
         usbd_ep_deconfig(dev, DAP_HID_EP_BULK_OUT);
-        usbd_reg_endpoint(dev, DAP_HID_EP_OUT, 0);
-        usbd_reg_endpoint(dev, DAP_HID_EP_IN, 0);
-        usbd_reg_endpoint(dev, DAP_HID_EP_BULK_IN, 0);
-        usbd_reg_endpoint(dev, DAP_HID_EP_BULK_OUT, 0);
+        usbd_reg_endpoint(dev, DAP_HID_EP_OUT, NULL);
+        usbd_reg_endpoint(dev, DAP_HID_EP_IN, NULL);
+        usbd_reg_endpoint(dev, DAP_HID_EP_BULK_IN, NULL);
+        usbd_reg_endpoint(dev, DAP_HID_EP_BULK_OUT, NULL);
         return usbd_ack;
     case EP_CFG_CONFIGURE:
         usbd_ep_config(dev, DAP_HID_EP_IN, USB_EPTYPE_INTERRUPT, DAP_HID_EP_SIZE);
         usbd_ep_config(dev, DAP_HID_EP_OUT, USB_EPTYPE_INTERRUPT, DAP_HID_EP_SIZE);
-        usbd_reg_endpoint(dev, DAP_HID_EP_IN, hid_txrx_ep_callback);
-        usbd_reg_endpoint(dev, DAP_HID_EP_OUT, hid_txrx_ep_callback);
-        usbd_ep_write(dev, DAP_HID_EP_IN, 0, 0);
-
         usbd_ep_config(dev, DAP_HID_EP_BULK_OUT, USB_EPTYPE_BULK, DAP_HID_EP_SIZE);
         usbd_ep_config(dev, DAP_HID_EP_BULK_IN, USB_EPTYPE_BULK, DAP_HID_EP_SIZE);
+        usbd_reg_endpoint(dev, DAP_HID_EP_IN, hid_txrx_ep_callback);
+        usbd_reg_endpoint(dev, DAP_HID_EP_OUT, hid_txrx_ep_callback);
         usbd_reg_endpoint(dev, DAP_HID_EP_BULK_OUT, hid_txrx_ep_bulk_callback);
         usbd_reg_endpoint(dev, DAP_HID_EP_BULK_IN, hid_txrx_ep_bulk_callback);
-        usbd_ep_write(dev, DAP_HID_EP_BULK_IN, 0, 0);
+        usbd_ep_write(dev, DAP_HID_EP_IN, NULL, 0);
+        usbd_ep_write(dev, DAP_HID_EP_BULK_IN, NULL, 0);
         return usbd_ack;
     default:
         return usbd_fail;
