@@ -12,13 +12,18 @@
 
 #define DAP_HID_EP_SEND 1
 #define DAP_HID_EP_RECV 2
+#define DAP_HID_EP_BULK_RECV 3
+#define DAP_HID_EP_BULK_SEND 4
 
 #define DAP_HID_EP_IN (HID_EP_IN | DAP_HID_EP_SEND)
 #define DAP_HID_EP_OUT (HID_EP_OUT | DAP_HID_EP_RECV)
 
+#define DAP_HID_EP_BULK_IN (HID_EP_IN | DAP_HID_EP_BULK_SEND)
+#define DAP_HID_EP_BULK_OUT (HID_EP_OUT | DAP_HID_EP_BULK_RECV)
+
 #define DAP_HID_EP_SIZE 64
 
-#define DAP_HID_INTERVAL 2
+#define DAP_HID_INTERVAL 1
 
 #define DAP_HID_VID 0x6666
 #define DAP_HID_PID 0x9930
@@ -28,28 +33,71 @@
 #define EP_CFG_DECONFIGURE 0
 #define EP_CFG_CONFIGURE 1
 
+enum {
+    USB_INTF_HID,
+    USB_INTF_BULK,
+    USB_INTF_CDC_COMM,
+    USB_INTF_CDC_DATA,
+    USB_INTF_COUNT,
+};
+
+enum {
+    USB_STR_ZERO,
+    USB_STR_MANUFACTURER,
+    USB_STR_PRODUCT,
+    USB_STR_SERIAL_NUMBER,
+    USB_STR_CMSIS_DAP_V1,
+    USB_STR_CMSIS_DAP_V2,
+    USB_STR_COM_PORT,
+    USB_STR_COUNT,
+};
+
+// static const char* usb_str[] = {
+//     [USB_STR_MANUFACTURER] = "Flipper Devices Inc.",
+//     [USB_STR_PRODUCT] = "Combined VCP and CMSIS-DAP Adapter",
+//     [USB_STR_COM_PORT] = "Virtual COM-Port",
+//     [USB_STR_CMSIS_DAP_V1] = "CMSIS-DAP v1 Adapter",
+//     [USB_STR_CMSIS_DAP_V2] = "CMSIS-DAP v2 Adapter",
+//     [USB_STR_SERIAL_NUMBER] = "01234567890ABCDEF",
+// };
+
+static const struct usb_string_descriptor dev_manuf_descr =
+    USB_STRING_DESC("Flipper Devices Inc.");
+static const struct usb_string_descriptor dev_prod_descr = USB_STRING_DESC("CMSIS-DAP Adapter");
+static const struct usb_string_descriptor dev_serial_descr = USB_STRING_DESC("01234567890ABCDEF");
+
+static const struct usb_string_descriptor dev_dap_v1_descr =
+    USB_STRING_DESC("CMSIS-DAP v1 Adapter");
+static const struct usb_string_descriptor dev_dap_v2_descr =
+    USB_STRING_DESC("CMSIS-DAP v2 Adapter");
+
 struct HidConfigDescriptor {
     struct usb_config_descriptor configuration;
+
     struct usb_interface_descriptor hid_interface;
     struct usb_hid_descriptor hid;
     struct usb_endpoint_descriptor hid_ep_in;
     struct usb_endpoint_descriptor hid_ep_out;
+
+    struct usb_interface_descriptor bulk_interface;
+    struct usb_endpoint_descriptor bulk_ep_out;
+    struct usb_endpoint_descriptor bulk_ep_in;
 } __attribute__((packed));
 
 static const struct usb_device_descriptor hid_device_desc = {
     .bLength = sizeof(struct usb_device_descriptor),
     .bDescriptorType = USB_DTYPE_DEVICE,
     .bcdUSB = VERSION_BCD(2, 0, 0),
-    .bDeviceClass = USB_CLASS_PER_INTERFACE,
-    .bDeviceSubClass = USB_SUBCLASS_NONE,
-    .bDeviceProtocol = USB_PROTO_NONE,
+    .bDeviceClass = USB_CLASS_MISC,
+    .bDeviceSubClass = USB_SUBCLASS_IAD,
+    .bDeviceProtocol = USB_PROTO_IAD,
     .bMaxPacketSize0 = DAP_USB_EP0_SIZE,
     .idVendor = DAP_HID_VID,
     .idProduct = DAP_HID_PID,
     .bcdDevice = VERSION_BCD(1, 0, 0),
-    .iManufacturer = 1,
-    .iProduct = 2,
-    .iSerialNumber = 3,
+    .iManufacturer = USB_STR_MANUFACTURER,
+    .iProduct = USB_STR_PRODUCT,
+    .iSerialNumber = USB_STR_SERIAL_NUMBER,
     .bNumConfigurations = 1,
 };
 
@@ -76,24 +124,25 @@ static const struct HidConfigDescriptor hid_cfg_desc = {
             .bLength = sizeof(struct usb_config_descriptor),
             .bDescriptorType = USB_DTYPE_CONFIGURATION,
             .wTotalLength = sizeof(struct HidConfigDescriptor),
-            .bNumInterfaces = 1,
+            .bNumInterfaces = USB_INTF_COUNT,
             .bConfigurationValue = 1,
             .iConfiguration = NO_DESCRIPTOR,
             .bmAttributes = USB_CFG_ATTR_RESERVED,
             .bMaxPower = USB_CFG_POWER_MA(500),
         },
 
+    // CMSIS-DAP v1
     .hid_interface =
         {
             .bLength = sizeof(struct usb_interface_descriptor),
             .bDescriptorType = USB_DTYPE_INTERFACE,
-            .bInterfaceNumber = 0,
+            .bInterfaceNumber = USB_INTF_HID,
             .bAlternateSetting = 0,
             .bNumEndpoints = 2,
             .bInterfaceClass = USB_CLASS_HID,
             .bInterfaceSubClass = USB_HID_SUBCLASS_NONBOOT,
             .bInterfaceProtocol = USB_HID_PROTO_NONBOOT,
-            .iInterface = NO_DESCRIPTOR,
+            .iInterface = USB_STR_CMSIS_DAP_V1,
         },
 
     .hid =
@@ -125,6 +174,40 @@ static const struct HidConfigDescriptor hid_cfg_desc = {
             .bmAttributes = USB_EPTYPE_INTERRUPT,
             .wMaxPacketSize = DAP_HID_EP_SIZE,
             .bInterval = DAP_HID_INTERVAL,
+        },
+
+    // CMSIS-DAP v2
+    .bulk_interface =
+        {
+            .bLength = sizeof(struct usb_interface_descriptor),
+            .bDescriptorType = USB_DTYPE_INTERFACE,
+            .bInterfaceNumber = USB_INTF_BULK,
+            .bAlternateSetting = 0,
+            .bNumEndpoints = 2,
+            .bInterfaceClass = USB_CLASS_VENDOR,
+            .bInterfaceSubClass = 0,
+            .bInterfaceProtocol = 0,
+            .iInterface = USB_STR_CMSIS_DAP_V2,
+        },
+
+    .bulk_ep_out =
+        {
+            .bLength = sizeof(struct usb_endpoint_descriptor),
+            .bDescriptorType = USB_DTYPE_ENDPOINT,
+            .bEndpointAddress = DAP_HID_EP_BULK_OUT,
+            .bmAttributes = USB_EPTYPE_BULK,
+            .wMaxPacketSize = DAP_HID_EP_SIZE,
+            .bInterval = 0,
+        },
+
+    .bulk_ep_in =
+        {
+            .bLength = sizeof(struct usb_endpoint_descriptor),
+            .bDescriptorType = USB_DTYPE_ENDPOINT,
+            .bEndpointAddress = DAP_HID_EP_BULK_IN,
+            .bmAttributes = USB_EPTYPE_BULK,
+            .wMaxPacketSize = DAP_HID_EP_SIZE,
+            .bInterval = 0,
         },
 };
 
@@ -166,10 +249,10 @@ void furi_console_log_printf(const char* format, ...) {
 bool dap_v2_usb_tx(uint8_t* buffer, uint8_t size) {
     if((dap_state.semaphore == NULL) || (dap_state.connected == false)) return false;
 
-    furi_check(furi_semaphore_acquire(dap_state.semaphore, FuriWaitForever) == FuriStatusOk);
+    // furi_check(furi_semaphore_acquire(dap_state.semaphore, FuriWaitForever) == FuriStatusOk);
 
     if(dap_state.connected) {
-        int32_t len = usbd_ep_write(dap_state.usb_dev, DAP_HID_EP_IN, buffer, size);
+        int32_t len = usbd_ep_write(dap_state.usb_dev, DAP_HID_EP_BULK_IN, buffer, size);
         UNUSED(len);
         furi_console_log_printf("tx %ld", len);
     }
@@ -196,11 +279,6 @@ static void hid_on_suspend(usbd_device* dev);
 
 static usbd_respond hid_ep_config(usbd_device* dev, uint8_t cfg);
 static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callback* callback);
-
-static const struct usb_string_descriptor dev_manuf_descr =
-    USB_STRING_DESC("Flipper Devices Inc.");
-static const struct usb_string_descriptor dev_prod_descr = USB_STRING_DESC("CMSIS-DAP Adapter");
-static const struct usb_string_descriptor dev_serial_descr = USB_STRING_DESC("01234567890ABCDEF");
 
 FuriHalUsbInterface dap_v2_usb_hid = {
     .init = hid_init,
@@ -289,13 +367,42 @@ static void hid_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
     }
 }
 
+static void hid_txrx_ep_bulk_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
+    // UNUSED(dev);
+    // furi_console_log_printf("bulk %d, %d", event, ep);
+    uint8_t data[64];
+    int32_t len;
+
+    switch(event) {
+    case usbd_evt_eptx:
+        furi_semaphore_release(dap_state.semaphore);
+        furi_console_log_printf("bulk tx complete");
+        break;
+    case usbd_evt_eprx:
+        len = usbd_ep_read(dev, ep, data, 64);
+        furi_console_log_printf("bulk rx %ld", len);
+
+        len = ((len < 0) ? 0 : len);
+
+        if(dap_state.rx_callback != NULL) {
+            dap_state.rx_callback(data, len, dap_state.context);
+        }
+    default:
+        break;
+    }
+}
+
 static usbd_respond hid_ep_config(usbd_device* dev, uint8_t cfg) {
     switch(cfg) {
     case EP_CFG_DECONFIGURE:
         usbd_ep_deconfig(dev, DAP_HID_EP_OUT);
         usbd_ep_deconfig(dev, DAP_HID_EP_IN);
+        usbd_ep_deconfig(dev, DAP_HID_EP_BULK_IN);
+        usbd_ep_deconfig(dev, DAP_HID_EP_BULK_OUT);
         usbd_reg_endpoint(dev, DAP_HID_EP_OUT, 0);
         usbd_reg_endpoint(dev, DAP_HID_EP_IN, 0);
+        usbd_reg_endpoint(dev, DAP_HID_EP_BULK_IN, 0);
+        usbd_reg_endpoint(dev, DAP_HID_EP_BULK_OUT, 0);
         return usbd_ack;
     case EP_CFG_CONFIGURE:
         usbd_ep_config(dev, DAP_HID_EP_IN, USB_EPTYPE_INTERRUPT, DAP_HID_EP_SIZE);
@@ -303,6 +410,12 @@ static usbd_respond hid_ep_config(usbd_device* dev, uint8_t cfg) {
         usbd_reg_endpoint(dev, DAP_HID_EP_IN, hid_txrx_ep_callback);
         usbd_reg_endpoint(dev, DAP_HID_EP_OUT, hid_txrx_ep_callback);
         usbd_ep_write(dev, DAP_HID_EP_IN, 0, 0);
+
+        usbd_ep_config(dev, DAP_HID_EP_BULK_OUT, USB_EPTYPE_BULK, DAP_HID_EP_SIZE);
+        usbd_ep_config(dev, DAP_HID_EP_BULK_IN, USB_EPTYPE_BULK, DAP_HID_EP_SIZE);
+        usbd_reg_endpoint(dev, DAP_HID_EP_BULK_OUT, hid_txrx_ep_bulk_callback);
+        usbd_reg_endpoint(dev, DAP_HID_EP_BULK_IN, hid_txrx_ep_bulk_callback);
+        usbd_ep_write(dev, DAP_HID_EP_BULK_IN, 0, 0);
         return usbd_ack;
     default:
         return usbd_fail;
@@ -317,7 +430,27 @@ static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_cal
         req->bRequest,
         req->wValue,
         req->wIndex,
+
         req->wLength);
+
+    if(((USB_REQ_RECIPIENT | USB_REQ_TYPE) & req->bmRequestType) ==
+       (USB_REQ_STANDARD | USB_REQ_DEVICE)) {
+        if(req->bRequest == USB_STD_GET_DESCRIPTOR) {
+            const uint8_t dtype = req->wValue >> 8;
+            const uint8_t dnumber = req->wValue & 0xFF;
+            if(dtype == USB_DTYPE_STRING) {
+                if(dnumber == USB_STR_CMSIS_DAP_V1) {
+                    dev->status.data_ptr = (uint8_t*)&dev_dap_v1_descr;
+                    dev->status.data_count = dev_dap_v1_descr.bLength;
+                    return usbd_ack;
+                } else if(dnumber == USB_STR_CMSIS_DAP_V2) {
+                    dev->status.data_ptr = (uint8_t*)&dev_dap_v2_descr;
+                    dev->status.data_count = dev_dap_v2_descr.bLength;
+                    return usbd_ack;
+                }
+            }
+        }
+    }
 
     if(((USB_REQ_RECIPIENT | USB_REQ_TYPE) & req->bmRequestType) ==
            (USB_REQ_INTERFACE | USB_REQ_CLASS) &&
@@ -333,6 +466,7 @@ static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_cal
             return usbd_fail;
         }
     }
+
     if(((USB_REQ_RECIPIENT | USB_REQ_TYPE) & req->bmRequestType) ==
            (USB_REQ_INTERFACE | USB_REQ_STANDARD) &&
        req->wIndex == 0 && req->bRequest == USB_STD_GET_DESCRIPTOR) {
@@ -351,7 +485,6 @@ static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_cal
             return usbd_fail;
         }
     }
-    return usbd_fail;
 
     return usbd_fail;
 }

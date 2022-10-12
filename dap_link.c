@@ -11,7 +11,7 @@ typedef enum {
     DapVersion2,
 } DapVersion;
 
-#define DAP_DEFAULT_VERSION DapVersion1
+#define DAP_DEFAULT_VERSION DapVersion2
 
 typedef struct {
     bool (*tx)(uint8_t* buffer, uint8_t size);
@@ -132,8 +132,9 @@ static void dap_app_process(DapApp* dap_app, DapPacket* rx_packet) {
     UNUSED(dap_app);
     DapPacket tx_packet;
     memset(&tx_packet, 0, sizeof(DapPacket));
-    dap_process_request(rx_packet->data, rx_packet->size, tx_packet.data, DAP_CONFIG_PACKET_SIZE);
-    dap_interface[DAP_DEFAULT_VERSION].tx(tx_packet.data, DAP_CONFIG_PACKET_SIZE);
+    size_t len = dap_process_request(
+        rx_packet->data, rx_packet->size, tx_packet.data, DAP_CONFIG_PACKET_SIZE);
+    dap_interface[DAP_DEFAULT_VERSION].tx(tx_packet.data, len);
 }
 
 int32_t dap_link_app(void* p) {
