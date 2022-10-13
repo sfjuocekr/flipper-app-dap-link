@@ -702,6 +702,25 @@ static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_cal
         req->wIndex,
         req->wLength);
 
+    if(((USB_REQ_RECIPIENT | USB_REQ_TYPE | USB_REQ_DIRECTION) & req->bmRequestType) ==
+       (USB_REQ_STANDARD | USB_REQ_VENDOR | USB_REQ_DEVTOHOST)) {
+        // vendor request, device to host
+        if(USB_WINUSB_VENDOR_CODE == req->bRequest) {
+            // WINUSB request
+            if(USB_WINUSB_DESCRIPTOR_INDEX == req->wIndex) {
+                furi_console_log_printf("WINUSB descriptor");
+                int length = req->wLength;
+                if(length > sizeof(usb_msos_descriptor_set_t)) {
+                    length = sizeof(usb_msos_descriptor_set_t);
+                }
+
+                dev->status.data_ptr = (uint8_t*)&usb_msos_descriptor_set;
+                dev->status.data_count = length;
+                return usbd_ack;
+            }
+        }
+    }
+
     if(((USB_REQ_RECIPIENT | USB_REQ_TYPE) & req->bmRequestType) ==
        (USB_REQ_STANDARD | USB_REQ_DEVICE)) {
         // device request
@@ -711,14 +730,17 @@ static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_cal
             // get string descriptor
             if(dtype == USB_DTYPE_STRING) {
                 if(dnumber == USB_STR_CMSIS_DAP_V1) {
+                    furi_console_log_printf("str CMSIS-DAP v1");
                     dev->status.data_ptr = (uint8_t*)&dev_dap_v1_descr;
                     dev->status.data_count = dev_dap_v1_descr.bLength;
                     return usbd_ack;
                 } else if(dnumber == USB_STR_CMSIS_DAP_V2) {
+                    furi_console_log_printf("str CMSIS-DAP v2");
                     dev->status.data_ptr = (uint8_t*)&dev_dap_v2_descr;
                     dev->status.data_count = dev_dap_v2_descr.bLength;
                     return usbd_ack;
                 } else if(dnumber == USB_STR_COM_PORT) {
+                    furi_console_log_printf("str COM port");
                     dev->status.data_ptr = (uint8_t*)&dev_com_descr;
                     dev->status.data_count = dev_com_descr.bLength;
                     return usbd_ack;
