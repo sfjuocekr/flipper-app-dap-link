@@ -12,7 +12,7 @@
 // #define DAP_CONFIG_ENABLE_JTAG
 
 #define DAP_CONFIG_DEFAULT_PORT DAP_PORT_SWD
-#define DAP_CONFIG_DEFAULT_CLOCK 1000000 // Hz
+#define DAP_CONFIG_DEFAULT_CLOCK 4200000 // Hz
 
 #define DAP_CONFIG_PACKET_SIZE 64
 #define DAP_CONFIG_PACKET_COUNT 1
@@ -32,7 +32,8 @@
 #define DAP_CONFIG_PERFORMANCE_ATTR
 
 // A value at which dap_clock_test() produces 1 kHz output on the SWCLK pin
-#define DAP_CONFIG_DELAY_CONSTANT 19000
+// #define DAP_CONFIG_DELAY_CONSTANT 19000
+#define DAP_CONFIG_DELAY_CONSTANT 6290
 
 // A threshold for switching to fast clock (no added delays)
 // This is the frequency produced by dap_clock_test(1) on the SWCLK pin
