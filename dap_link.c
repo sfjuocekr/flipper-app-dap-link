@@ -1,4 +1,5 @@
 #include <furi.h>
+#include <furi_hal_version.h>
 #include <furi_hal_resources.h>
 #include <m-string.h>
 #include "dap.h"
@@ -24,24 +25,8 @@ typedef struct {
     DapAppEvent event;
 } DapMessage;
 
-char usb_serial_number[16] = {
-    '0',
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    'A',
-    'B',
-    'C',
-    'D',
-    'E',
-    0,
-};
+#define USB_SERIAL_NUMBER_LEN 16
+char usb_serial_number[USB_SERIAL_NUMBER_LEN] = {0};
 
 static DapApp* dap_app_alloc() {
     DapApp* dap_app = malloc(sizeof(DapApp));
@@ -79,11 +64,17 @@ static void dap_app_usb_start(DapApp* dap_app) {
     furi_assert(dap_app);
     dap_app->usb_config_prev = furi_hal_usb_get_config();
 
+    const char* name = furi_hal_version_get_name_ptr();
+    if(!name) {
+        name = "Flipper";
+    }
+    snprintf(usb_serial_number, USB_SERIAL_NUMBER_LEN, "Flip_%s", name);
+
+    dap_common_usb_alloc_name(usb_serial_number);
     dap_common_usb_set_state_callback(dap_app_state_callback);
     dap_common_usb_set_context(dap_app->queue);
     dap_v1_usb_set_rx_callback(dap_app_rx1_callback);
     dap_v2_usb_set_rx_callback(dap_app_rx2_callback);
-
     furi_hal_usb_set_config(&dap_v2_usb_hid, NULL);
 }
 
@@ -94,6 +85,7 @@ static void dap_app_usb_stop(DapApp* dap_app) {
     dap_common_usb_set_state_callback(NULL);
     dap_v1_usb_set_rx_callback(NULL);
     dap_v2_usb_set_rx_callback(NULL);
+    dap_common_usb_free_name();
 }
 
 void dap_app_log_buffer(const char* prefix, const uint8_t* buffer, uint32_t size) {

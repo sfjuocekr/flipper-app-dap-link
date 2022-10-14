@@ -76,7 +76,7 @@ static const struct usb_string_descriptor dev_manuf_descr =
 static const struct usb_string_descriptor dev_prod_descr =
     USB_STRING_DESC("Combined VCP and CMSIS-DAP Adapter");
 
-static const struct usb_string_descriptor dev_serial_descr = USB_STRING_DESC("0123456789ABCDEF");
+static struct usb_string_descriptor* dev_serial_descr = NULL;
 
 static const struct usb_string_descriptor dev_dap_v1_descr =
     USB_STRING_DESC("CMSIS-DAP v1 Adapter");
@@ -525,6 +525,27 @@ void dap_common_usb_set_context(void* context) {
 
 void dap_common_usb_set_state_callback(DapStateCallback callback) {
     dap_state.state_callback = callback;
+}
+
+static void* dap_usb_alloc_string_descr(const char* str) {
+    furi_assert(str);
+
+    uint8_t len = strlen(str);
+    uint8_t wlen = (len + 1) * sizeof(uint16_t);
+    struct usb_string_descriptor* dev_str_desc = malloc(wlen);
+    dev_str_desc->bLength = wlen;
+    dev_str_desc->bDescriptorType = USB_DTYPE_STRING;
+    for(uint8_t i = 0; i < len; i++) dev_str_desc->wString[i] = str[i];
+
+    return dev_str_desc;
+}
+
+void dap_common_usb_alloc_name(const char* name) {
+    dev_serial_descr = dap_usb_alloc_string_descr(name);
+}
+
+void dap_common_usb_free_name() {
+    free(dev_serial_descr);
 }
 
 static void hid_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx);

@@ -23,3 +23,7 @@ void dap_v2_usb_set_rx_callback(DapRxCallback callback);
 void dap_common_usb_set_context(void* context);
 
 void dap_common_usb_set_state_callback(DapStateCallback callback);
+
+void dap_common_usb_alloc_name(const char* name);
+
+void dap_common_usb_free_name();
