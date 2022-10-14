@@ -43,7 +43,7 @@ char usb_serial_number[16] = {
     'C',
     'D',
     'E',
-    'F',
+    0,
 };
 
 static DapApp* dap_app_alloc() {
@@ -112,6 +112,19 @@ static void dap_app_usb_stop(DapApp* dap_app) {
     dap_v2_usb_set_rx_callback(NULL);
 }
 
+void dap_app_log_buffer(const char* prefix, const uint8_t* buffer, uint32_t size) {
+    furi_assert(prefix);
+    furi_assert(buffer);
+    furi_assert(size);
+
+    FuriString* str = furi_string_alloc();
+    for(uint32_t i = 0; i < size; i++) {
+        furi_string_cat_printf(str, "%02X ", buffer[i]);
+    }
+    FURI_LOG_I("DAP", "%s: %s", prefix, furi_string_get_cstr(str));
+    furi_string_free(str);
+}
+
 static void dap_app_process_v1(DapApp* dap_app, DapPacket* rx_packet) {
     UNUSED(dap_app);
     DapPacket tx_packet;
@@ -127,6 +140,8 @@ static void dap_app_process_v2(DapApp* dap_app, DapPacket* rx_packet) {
     size_t len = dap_process_request(
         rx_packet->data, rx_packet->size, tx_packet.data, DAP_CONFIG_PACKET_SIZE);
     dap_v2_usb_tx(tx_packet.data, len);
+    // dap_app_log_buffer("RX", rx_packet->data, rx_packet->size);
+    // dap_app_log_buffer("TX", tx_packet.data, len);
 }
 
 int32_t dap_link_app(void* p) {

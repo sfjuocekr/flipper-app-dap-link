@@ -72,13 +72,18 @@ enum {
 
 static const struct usb_string_descriptor dev_manuf_descr =
     USB_STRING_DESC("Flipper Devices Inc.");
+
 static const struct usb_string_descriptor dev_prod_descr =
     USB_STRING_DESC("Combined VCP and CMSIS-DAP Adapter");
-static const struct usb_string_descriptor dev_serial_descr = USB_STRING_DESC("01234567890ABCDEF");
+
+static const struct usb_string_descriptor dev_serial_descr = USB_STRING_DESC("0123456789ABCDEF");
+
 static const struct usb_string_descriptor dev_dap_v1_descr =
     USB_STRING_DESC("CMSIS-DAP v1 Adapter");
+
 static const struct usb_string_descriptor dev_dap_v2_descr =
     USB_STRING_DESC("CMSIS-DAP v2 Adapter");
+
 static const struct usb_string_descriptor dev_com_descr = USB_STRING_DESC("Virtual COM-Port");
 
 struct HidConfigDescriptor {
@@ -112,7 +117,7 @@ struct HidConfigDescriptor {
 static const struct usb_device_descriptor hid_device_desc = {
     .bLength = sizeof(struct usb_device_descriptor),
     .bDescriptorType = USB_DTYPE_DEVICE,
-    .bcdUSB = VERSION_BCD(2, 0, 0),
+    .bcdUSB = VERSION_BCD(2, 1, 0),
     .bDeviceClass = USB_CLASS_MISC,
     .bDeviceSubClass = USB_SUBCLASS_IAD,
     .bDeviceProtocol = USB_PROTO_IAD,
@@ -257,7 +262,7 @@ static const struct HidConfigDescriptor hid_cfg_desc = {
             .bInterfaceClass = USB_CLASS_CDC,
             .bInterfaceSubClass = USB_CDC_SUBCLASS_ACM,
             .bInterfaceProtocol = USB_PROTO_NONE,
-            .iInterface = 0,
+            .iInterface = USB_STR_COM_PORT,
         },
 
     .cdc_header =
@@ -615,6 +620,7 @@ static void hid_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
         if(dap_state.rx_callback_v1 != NULL) {
             dap_state.rx_callback_v1(data, len, dap_state.context);
         }
+        break;
     default:
         furi_console_log_printf("hid %d, %d", event, ep);
         break;
@@ -622,6 +628,9 @@ static void hid_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
 }
 
 static void hid_txrx_ep_bulk_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
+    UNUSED(dev);
+    UNUSED(ep);
+
     uint8_t data[DAP_HID_EP_SIZE];
     int32_t len;
 
@@ -639,6 +648,7 @@ static void hid_txrx_ep_bulk_callback(usbd_device* dev, uint8_t event, uint8_t e
         if(dap_state.rx_callback_v2 != NULL) {
             dap_state.rx_callback_v2(data, len, dap_state.context);
         }
+        break;
     default:
         furi_console_log_printf("bulk %d, %d", event, ep);
         break;
@@ -684,18 +694,64 @@ static usbd_respond hid_ep_config(usbd_device* dev, uint8_t cfg) {
         usbd_reg_endpoint(dev, HID_EP_OUT | DAP_CDC_EP_RECV, cdc_txrx_ep_callback);
         usbd_reg_endpoint(dev, HID_EP_IN | DAP_CDC_EP_SEND, cdc_txrx_ep_callback);
         usbd_ep_write(dev, DAP_HID_EP_IN, NULL, 0);
-        usbd_ep_write(dev, DAP_HID_EP_BULK_IN, NULL, 0);
+        // usbd_ep_write(dev, DAP_HID_EP_BULK_IN, NULL, 0);
         usbd_ep_write(dev, HID_EP_IN | DAP_CDC_EP_SEND, NULL, 0);
         return usbd_ack;
     default:
         return usbd_fail;
     }
 }
+
+#ifdef DAP_USB_LOG
+static void dump_request_type(uint8_t type) {
+    switch(type & USB_REQ_DIRECTION) {
+    case USB_REQ_HOSTTODEV:
+        furi_hal_console_puts("host to dev, ");
+        break;
+    case USB_REQ_DEVTOHOST:
+        furi_hal_console_puts("dev to host, ");
+        break;
+    }
+
+    switch(type & USB_REQ_TYPE) {
+    case USB_REQ_STANDARD:
+        furi_hal_console_puts("standard, ");
+        break;
+    case USB_REQ_CLASS:
+        furi_hal_console_puts("class, ");
+        break;
+    case USB_REQ_VENDOR:
+        furi_hal_console_puts("vendor, ");
+        break;
+    }
+
+    switch(type & USB_REQ_RECIPIENT) {
+    case USB_REQ_DEVICE:
+        furi_hal_console_puts("device");
+        break;
+    case USB_REQ_INTERFACE:
+        furi_hal_console_puts("interface");
+        break;
+    case USB_REQ_ENDPOINT:
+        furi_hal_console_puts("endpoint");
+        break;
+    case USB_REQ_OTHER:
+        furi_hal_console_puts("other");
+        break;
+    }
+
+    furi_hal_console_puts("\r\n");
+}
+#else
+#define dump_request_type(...)
+#endif
+
 static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_callback* callback) {
     UNUSED(callback);
 
+    dump_request_type(req->bmRequestType);
     furi_console_log_printf(
-        "control: RT %d, R %d, V %d, I %d, L %d",
+        "control: RT %02x, R %02x, V %04x, I %04x, L %04x",
         req->bmRequestType,
         req->bRequest,
         req->wValue,
@@ -705,11 +761,12 @@ static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_cal
     if(((USB_REQ_RECIPIENT | USB_REQ_TYPE | USB_REQ_DIRECTION) & req->bmRequestType) ==
        (USB_REQ_STANDARD | USB_REQ_VENDOR | USB_REQ_DEVTOHOST)) {
         // vendor request, device to host
+        furi_console_log_printf("vendor request");
         if(USB_WINUSB_VENDOR_CODE == req->bRequest) {
             // WINUSB request
             if(USB_WINUSB_DESCRIPTOR_INDEX == req->wIndex) {
                 furi_console_log_printf("WINUSB descriptor");
-                int length = req->wLength;
+                uint16_t length = req->wLength;
                 if(length > sizeof(usb_msos_descriptor_set_t)) {
                     length = sizeof(usb_msos_descriptor_set_t);
                 }
@@ -728,7 +785,7 @@ static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_cal
             const uint8_t dtype = req->wValue >> 8;
             const uint8_t dnumber = req->wValue & 0xFF;
             // get string descriptor
-            if(dtype == USB_DTYPE_STRING) {
+            if(USB_DTYPE_STRING == dtype) {
                 if(dnumber == USB_STR_CMSIS_DAP_V1) {
                     furi_console_log_printf("str CMSIS-DAP v1");
                     dev->status.data_ptr = (uint8_t*)&dev_dap_v1_descr;
@@ -745,6 +802,15 @@ static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_cal
                     dev->status.data_count = dev_com_descr.bLength;
                     return usbd_ack;
                 }
+            } else if(USB_DTYPE_BINARY_OBJECT_STORE == dtype) {
+                furi_console_log_printf("BOS descriptor");
+                uint16_t length = req->wLength;
+                if(length > sizeof(usb_bos_hierarchy_t)) {
+                    length = sizeof(usb_bos_hierarchy_t);
+                }
+                dev->status.data_ptr = (uint8_t*)&usb_bos_hierarchy;
+                dev->status.data_count = length;
+                return usbd_ack;
             }
         }
     }
