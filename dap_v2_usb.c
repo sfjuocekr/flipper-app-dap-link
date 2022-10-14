@@ -262,7 +262,7 @@ static const struct HidConfigDescriptor hid_cfg_desc = {
             .bInterfaceClass = USB_CLASS_CDC,
             .bInterfaceSubClass = USB_CDC_SUBCLASS_ACM,
             .bInterfaceProtocol = USB_PROTO_NONE,
-            .iInterface = USB_STR_COM_PORT,
+            .iInterface = 0,
         },
 
     .cdc_header =
@@ -374,7 +374,6 @@ const usb_bos_hierarchy_t usb_bos_hierarchy = {
             .wTotalLength = sizeof(usb_bos_hierarchy_t),
             .bNumDeviceCaps = 1,
         },
-
     .winusb =
         {
             .bLength = sizeof(usb_winusb_capability_descriptor_t),
@@ -561,19 +560,17 @@ FuriHalUsbInterface dap_v2_usb_hid = {
     .deinit = hid_deinit,
     .wakeup = hid_on_wakeup,
     .suspend = hid_on_suspend,
-
     .dev_descr = (struct usb_device_descriptor*)&hid_device_desc,
-
-    .str_manuf_descr = (void*)&dev_manuf_descr,
-    .str_prod_descr = (void*)&dev_prod_descr,
-    .str_serial_descr = (void*)&dev_serial_descr,
-
     .cfg_descr = (void*)&hid_cfg_desc,
 };
 
 static void hid_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     UNUSED(intf);
     UNUSED(ctx);
+
+    dap_v2_usb_hid.str_manuf_descr = (void*)&dev_manuf_descr;
+    dap_v2_usb_hid.str_prod_descr = (void*)&dev_prod_descr;
+    dap_v2_usb_hid.str_serial_descr = (void*)dev_serial_descr;
 
     dap_state.usb_dev = dev;
     if(dap_state.semaphore_v1 == NULL) dap_state.semaphore_v1 = furi_semaphore_alloc(1, 1);
@@ -721,9 +718,9 @@ static usbd_respond hid_ep_config(usbd_device* dev, uint8_t cfg) {
         usbd_reg_endpoint(dev, DAP_HID_EP_BULK_IN, hid_txrx_ep_bulk_callback);
         usbd_reg_endpoint(dev, HID_EP_OUT | DAP_CDC_EP_RECV, cdc_txrx_ep_callback);
         usbd_reg_endpoint(dev, HID_EP_IN | DAP_CDC_EP_SEND, cdc_txrx_ep_callback);
-        usbd_ep_write(dev, DAP_HID_EP_IN, NULL, 0);
+        // usbd_ep_write(dev, DAP_HID_EP_IN, NULL, 0);
         // usbd_ep_write(dev, DAP_HID_EP_BULK_IN, NULL, 0);
-        usbd_ep_write(dev, HID_EP_IN | DAP_CDC_EP_SEND, NULL, 0);
+        // usbd_ep_write(dev, HID_EP_IN | DAP_CDC_EP_SEND, NULL, 0);
         return usbd_ack;
     default:
         return usbd_fail;

@@ -31,7 +31,7 @@ char usb_serial_number[USB_SERIAL_NUMBER_LEN] = {0};
 static DapApp* dap_app_alloc() {
     DapApp* dap_app = malloc(sizeof(DapApp));
     dap_app->usb_config_prev = NULL;
-    dap_app->queue = furi_message_queue_alloc(16, sizeof(DapMessage));
+    dap_app->queue = furi_message_queue_alloc(64, sizeof(DapMessage));
     return dap_app;
 }
 
