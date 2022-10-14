@@ -22,9 +22,6 @@ typedef enum {
 
 typedef struct {
     DapAppEvent event;
-    union {
-        DapPacket packet;
-    };
 } DapMessage;
 
 char usb_serial_number[16] = {
@@ -58,31 +55,18 @@ static void dap_app_free(DapApp* dap_app) {
     free(dap_app);
 }
 
-static void dap_app_rx1_callback(uint8_t* buffer, uint8_t size, void* context) {
+static void dap_app_rx1_callback(void* context) {
     furi_assert(context);
     FuriMessageQueue* queue = context;
-    DapMessage message = {
-        .event = DapAppRxV1,
-        .packet =
-            {
-                .size = size,
-            },
-    };
-    memcpy(message.packet.data, buffer, size);
+    DapMessage message = {.event = DapAppRxV1};
+
     furi_check(furi_message_queue_put(queue, &message, 0) == FuriStatusOk);
 }
 
-static void dap_app_rx2_callback(uint8_t* buffer, uint8_t size, void* context) {
+static void dap_app_rx2_callback(void* context) {
     furi_assert(context);
     FuriMessageQueue* queue = context;
-    DapMessage message = {
-        .event = DapAppRxV2,
-        .packet =
-            {
-                .size = size,
-            },
-    };
-    memcpy(message.packet.data, buffer, size);
+    DapMessage message = {.event = DapAppRxV2};
     furi_check(furi_message_queue_put(queue, &message, 0) == FuriStatusOk);
 }
 
@@ -125,20 +109,24 @@ void dap_app_log_buffer(const char* prefix, const uint8_t* buffer, uint32_t size
     furi_string_free(str);
 }
 
-static void dap_app_process_v1(DapApp* dap_app, DapPacket* rx_packet) {
+static void dap_app_process_v1(DapApp* dap_app) {
     UNUSED(dap_app);
     DapPacket tx_packet;
+    DapPacket rx_packet;
     memset(&tx_packet, 0, sizeof(DapPacket));
-    dap_process_request(rx_packet->data, rx_packet->size, tx_packet.data, DAP_CONFIG_PACKET_SIZE);
+    rx_packet.size = dap_v1_usb_rx(rx_packet.data, DAP_CONFIG_PACKET_SIZE);
+    dap_process_request(rx_packet.data, rx_packet.size, tx_packet.data, DAP_CONFIG_PACKET_SIZE);
     dap_v1_usb_tx(tx_packet.data, DAP_CONFIG_PACKET_SIZE);
 }
 
-static void dap_app_process_v2(DapApp* dap_app, DapPacket* rx_packet) {
+static void dap_app_process_v2(DapApp* dap_app) {
     UNUSED(dap_app);
     DapPacket tx_packet;
+    DapPacket rx_packet;
     memset(&tx_packet, 0, sizeof(DapPacket));
+    rx_packet.size = dap_v2_usb_rx(rx_packet.data, DAP_CONFIG_PACKET_SIZE);
     size_t len = dap_process_request(
-        rx_packet->data, rx_packet->size, tx_packet.data, DAP_CONFIG_PACKET_SIZE);
+        rx_packet.data, rx_packet.size, tx_packet.data, DAP_CONFIG_PACKET_SIZE);
     dap_v2_usb_tx(tx_packet.data, len);
     // dap_app_log_buffer("RX", rx_packet->data, rx_packet->size);
     // dap_app_log_buffer("TX", tx_packet.data, len);
@@ -156,10 +144,10 @@ int32_t dap_link_app(void* p) {
         if(furi_message_queue_get(app->queue, &message, FuriWaitForever) == FuriStatusOk) {
             switch(message.event) {
             case DapAppRxV1:
-                dap_app_process_v1(app, &message.packet);
+                dap_app_process_v1(app);
                 break;
             case DapAppRxV2:
-                dap_app_process_v2(app, &message.packet);
+                dap_app_process_v2(app);
                 break;
             }
         }

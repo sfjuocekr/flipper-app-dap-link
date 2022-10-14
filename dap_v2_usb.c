@@ -602,9 +602,29 @@ static void hid_on_suspend(usbd_device* dev) {
     }
 }
 
+size_t dap_v1_usb_rx(uint8_t* buffer, size_t size) {
+    size_t len = 0;
+
+    if(dap_state.connected) {
+        len = usbd_ep_read(dap_state.usb_dev, DAP_HID_EP_OUT, buffer, size);
+    }
+
+    return len;
+}
+
+size_t dap_v2_usb_rx(uint8_t* buffer, size_t size) {
+    size_t len = 0;
+
+    if(dap_state.connected) {
+        len = usbd_ep_read(dap_state.usb_dev, DAP_HID_EP_BULK_OUT, buffer, size);
+    }
+
+    return len;
+}
+
 static void hid_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
-    uint8_t data[DAP_HID_EP_SIZE];
-    int32_t len;
+    UNUSED(dev);
+    UNUSED(ep);
 
     switch(event) {
     case usbd_evt_eptx:
@@ -612,13 +632,8 @@ static void hid_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
         furi_console_log_printf("hid tx complete");
         break;
     case usbd_evt_eprx:
-        len = usbd_ep_read(dev, ep, data, DAP_HID_EP_SIZE);
-        furi_console_log_printf("hid rx %ld", len);
-
-        len = ((len < 0) ? 0 : len);
-
         if(dap_state.rx_callback_v1 != NULL) {
-            dap_state.rx_callback_v1(data, len, dap_state.context);
+            dap_state.rx_callback_v1(dap_state.context);
         }
         break;
     default:
@@ -631,22 +646,14 @@ static void hid_txrx_ep_bulk_callback(usbd_device* dev, uint8_t event, uint8_t e
     UNUSED(dev);
     UNUSED(ep);
 
-    uint8_t data[DAP_HID_EP_SIZE];
-    int32_t len;
-
     switch(event) {
     case usbd_evt_eptx:
         furi_semaphore_release(dap_state.semaphore_v2);
         furi_console_log_printf("bulk tx complete");
         break;
     case usbd_evt_eprx:
-        len = usbd_ep_read(dev, ep, data, DAP_HID_EP_SIZE);
-        furi_console_log_printf("bulk rx %ld", len);
-
-        len = ((len < 0) ? 0 : len);
-
         if(dap_state.rx_callback_v2 != NULL) {
-            dap_state.rx_callback_v2(data, len, dap_state.context);
+            dap_state.rx_callback_v2(dap_state.context);
         }
         break;
     default:
