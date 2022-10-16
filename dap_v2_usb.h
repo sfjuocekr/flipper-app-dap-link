@@ -32,6 +32,8 @@ size_t dap_cdc_usb_rx(uint8_t* buffer, size_t size);
 
 void dap_cdc_usb_set_rx_callback(DapRxCallback callback);
 
+void dap_cdc_usb_set_context(void* context);
+
 /*********************************** Common ************************************/
 
 void dap_common_usb_set_context(void* context);

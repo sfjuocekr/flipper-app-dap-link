@@ -1,0 +1,3 @@
+[submodule "lib/free-dap"]
+	path = lib/free-dap
+	url = https://github.com/ataradov/free-dap.git

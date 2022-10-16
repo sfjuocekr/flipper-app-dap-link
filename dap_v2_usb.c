@@ -450,6 +450,7 @@ typedef struct {
     DapRxCallback rx_callback_v2;
     DapRxCallback rx_callback_cdc;
     void* context;
+    void* context_cdc;
 } DAPState;
 
 static DAPState dap_state = {
@@ -463,6 +464,7 @@ static DAPState dap_state = {
     .rx_callback_v2 = NULL,
     .rx_callback_cdc = NULL,
     .context = NULL,
+    .context_cdc = NULL,
 };
 
 static struct usb_cdc_line_coding cdc_config = {0};
@@ -537,6 +539,10 @@ void dap_v2_usb_set_rx_callback(DapRxCallback callback) {
 
 void dap_cdc_usb_set_rx_callback(DapRxCallback callback) {
     dap_state.rx_callback_cdc = callback;
+}
+
+void dap_cdc_usb_set_context(void* context) {
+    dap_state.context_cdc = context;
 }
 
 void dap_common_usb_set_context(void* context) {
@@ -725,7 +731,7 @@ static void cdc_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
         break;
     case usbd_evt_eprx:
         if(dap_state.rx_callback_cdc != NULL) {
-            dap_state.rx_callback_cdc(dap_state.context);
+            dap_state.rx_callback_cdc(dap_state.context_cdc);
         }
         break;
     default:
