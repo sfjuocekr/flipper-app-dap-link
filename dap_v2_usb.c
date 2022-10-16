@@ -278,7 +278,8 @@ static const struct HidConfigDescriptor hid_cfg_desc = {
             .bFunctionLength = sizeof(struct usb_cdc_call_mgmt_desc),
             .bDescriptorType = USB_DTYPE_CS_INTERFACE,
             .bDescriptorSubType = USB_DTYPE_CDC_CALL_MANAGEMENT,
-            .bmCapabilities = USB_CDC_CAP_LINE | USB_CDC_CAP_BRK,
+            // .bmCapabilities = USB_CDC_CAP_LINE | USB_CDC_CAP_BRK,
+            .bmCapabilities = 0,
         },
 
     .cdc_call_mgmt =
@@ -441,22 +442,26 @@ const usb_msos_descriptor_set_t usb_msos_descriptor_set = {
 typedef struct {
     FuriSemaphore* semaphore_v1;
     FuriSemaphore* semaphore_v2;
+    FuriSemaphore* semaphore_cdc;
     bool connected;
     usbd_device* usb_dev;
     DapStateCallback state_callback;
     DapRxCallback rx_callback_v1;
     DapRxCallback rx_callback_v2;
+    DapRxCallback rx_callback_cdc;
     void* context;
 } DAPState;
 
 static DAPState dap_state = {
     .semaphore_v1 = NULL,
     .semaphore_v2 = NULL,
+    .semaphore_cdc = NULL,
     .connected = false,
     .usb_dev = NULL,
     .state_callback = NULL,
     .rx_callback_v1 = NULL,
     .rx_callback_v2 = NULL,
+    .rx_callback_cdc = NULL,
     .context = NULL,
 };
 
@@ -480,33 +485,45 @@ void furi_console_log_printf(const char* format, ...) {
 #define furi_console_log_printf(...)
 #endif
 
-bool dap_v1_usb_tx(uint8_t* buffer, uint8_t size) {
-    if((dap_state.semaphore_v1 == NULL) || (dap_state.connected == false)) return false;
+int32_t dap_v1_usb_tx(uint8_t* buffer, uint8_t size) {
+    if((dap_state.semaphore_v1 == NULL) || (dap_state.connected == false)) return 0;
 
     furi_check(furi_semaphore_acquire(dap_state.semaphore_v1, FuriWaitForever) == FuriStatusOk);
 
     if(dap_state.connected) {
         int32_t len = usbd_ep_write(dap_state.usb_dev, DAP_HID_EP_IN, buffer, size);
-        UNUSED(len);
-        furi_console_log_printf("tx %ld", len);
-        return true;
+        furi_console_log_printf("v1 tx %ld", len);
+        return len;
     } else {
-        return false;
+        return 0;
     }
 }
 
-bool dap_v2_usb_tx(uint8_t* buffer, uint8_t size) {
-    if((dap_state.semaphore_v2 == NULL) || (dap_state.connected == false)) return false;
+int32_t dap_v2_usb_tx(uint8_t* buffer, uint8_t size) {
+    if((dap_state.semaphore_v2 == NULL) || (dap_state.connected == false)) return 0;
 
     furi_check(furi_semaphore_acquire(dap_state.semaphore_v2, FuriWaitForever) == FuriStatusOk);
 
     if(dap_state.connected) {
         int32_t len = usbd_ep_write(dap_state.usb_dev, DAP_HID_EP_BULK_IN, buffer, size);
-        UNUSED(len);
-        furi_console_log_printf("tx %ld", len);
-        return true;
+        furi_console_log_printf("v2 tx %ld", len);
+        return len;
     } else {
-        return false;
+        return 0;
+    }
+}
+
+int32_t dap_cdc_usb_tx(uint8_t* buffer, uint8_t size) {
+    if((dap_state.semaphore_cdc == NULL) || (dap_state.connected == false)) return 0;
+
+    furi_check(furi_semaphore_acquire(dap_state.semaphore_cdc, FuriWaitForever) == FuriStatusOk);
+
+    if(dap_state.connected) {
+        int32_t len = usbd_ep_write(dap_state.usb_dev, HID_EP_IN | DAP_CDC_EP_SEND, buffer, size);
+        furi_console_log_printf("cdc tx %ld", len);
+        return len;
+    } else {
+        return 0;
     }
 }
 
@@ -516,6 +533,10 @@ void dap_v1_usb_set_rx_callback(DapRxCallback callback) {
 
 void dap_v2_usb_set_rx_callback(DapRxCallback callback) {
     dap_state.rx_callback_v2 = callback;
+}
+
+void dap_cdc_usb_set_rx_callback(DapRxCallback callback) {
+    dap_state.rx_callback_cdc = callback;
 }
 
 void dap_common_usb_set_context(void* context) {
@@ -575,6 +596,7 @@ static void hid_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     dap_state.usb_dev = dev;
     if(dap_state.semaphore_v1 == NULL) dap_state.semaphore_v1 = furi_semaphore_alloc(1, 1);
     if(dap_state.semaphore_v2 == NULL) dap_state.semaphore_v2 = furi_semaphore_alloc(1, 1);
+    if(dap_state.semaphore_cdc == NULL) dap_state.semaphore_cdc = furi_semaphore_alloc(1, 1);
 
     usb_hid.dev_descr->idVendor = DAP_HID_VID;
     usb_hid.dev_descr->idProduct = DAP_HID_PID;
@@ -590,8 +612,10 @@ static void hid_deinit(usbd_device* dev) {
 
     furi_semaphore_free(dap_state.semaphore_v1);
     furi_semaphore_free(dap_state.semaphore_v2);
+    furi_semaphore_free(dap_state.semaphore_cdc);
     dap_state.semaphore_v1 = NULL;
     dap_state.semaphore_v2 = NULL;
+    dap_state.semaphore_cdc = NULL;
 
     usbd_reg_config(dev, NULL);
     usbd_reg_control(dev, NULL);
@@ -640,6 +664,16 @@ size_t dap_v2_usb_rx(uint8_t* buffer, size_t size) {
     return len;
 }
 
+size_t dap_cdc_usb_rx(uint8_t* buffer, size_t size) {
+    size_t len = 0;
+
+    if(dap_state.connected) {
+        len = usbd_ep_read(dap_state.usb_dev, HID_EP_OUT | DAP_CDC_EP_RECV, buffer, size);
+    }
+
+    return len;
+}
+
 static void hid_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
     UNUSED(dev);
     UNUSED(ep);
@@ -682,9 +716,22 @@ static void hid_txrx_ep_bulk_callback(usbd_device* dev, uint8_t event, uint8_t e
 
 static void cdc_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
     UNUSED(dev);
-    UNUSED(event);
     UNUSED(ep);
-    furi_console_log_printf("cdc %d, %d", event, ep);
+
+    switch(event) {
+    case usbd_evt_eptx:
+        furi_semaphore_release(dap_state.semaphore_cdc);
+        furi_console_log_printf("cdc tx complete");
+        break;
+    case usbd_evt_eprx:
+        if(dap_state.rx_callback_cdc != NULL) {
+            dap_state.rx_callback_cdc(dap_state.context);
+        }
+        break;
+    default:
+        furi_console_log_printf("cdc %d, %d", event, ep);
+        break;
+    }
 }
 
 static usbd_respond hid_ep_config(usbd_device* dev, uint8_t cfg) {

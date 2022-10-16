@@ -68,7 +68,7 @@ static void dap_app_usb_start(DapApp* dap_app) {
     if(!name) {
         name = "Flipper";
     }
-    snprintf(usb_serial_number, USB_SERIAL_NUMBER_LEN, "Flip_%s", name);
+    snprintf(usb_serial_number, USB_SERIAL_NUMBER_LEN, "DAP_%s", name);
 
     dap_common_usb_alloc_name(usb_serial_number);
     dap_common_usb_set_state_callback(dap_app_state_callback);
@@ -88,21 +88,7 @@ static void dap_app_usb_stop(DapApp* dap_app) {
     dap_common_usb_free_name();
 }
 
-void dap_app_log_buffer(const char* prefix, const uint8_t* buffer, uint32_t size) {
-    furi_assert(prefix);
-    furi_assert(buffer);
-    furi_assert(size);
-
-    FuriString* str = furi_string_alloc();
-    for(uint32_t i = 0; i < size; i++) {
-        furi_string_cat_printf(str, "%02X ", buffer[i]);
-    }
-    FURI_LOG_I("DAP", "%s: %s", prefix, furi_string_get_cstr(str));
-    furi_string_free(str);
-}
-
-static void dap_app_process_v1(DapApp* dap_app) {
-    UNUSED(dap_app);
+static void dap_app_process_v1() {
     DapPacket tx_packet;
     DapPacket rx_packet;
     memset(&tx_packet, 0, sizeof(DapPacket));
@@ -111,8 +97,7 @@ static void dap_app_process_v1(DapApp* dap_app) {
     dap_v1_usb_tx(tx_packet.data, DAP_CONFIG_PACKET_SIZE);
 }
 
-static void dap_app_process_v2(DapApp* dap_app) {
-    UNUSED(dap_app);
+static void dap_app_process_v2() {
     DapPacket tx_packet;
     DapPacket rx_packet;
     memset(&tx_packet, 0, sizeof(DapPacket));
@@ -120,8 +105,6 @@ static void dap_app_process_v2(DapApp* dap_app) {
     size_t len = dap_process_request(
         rx_packet.data, rx_packet.size, tx_packet.data, DAP_CONFIG_PACKET_SIZE);
     dap_v2_usb_tx(tx_packet.data, len);
-    // dap_app_log_buffer("RX", rx_packet->data, rx_packet->size);
-    // dap_app_log_buffer("TX", tx_packet.data, len);
 }
 
 int32_t dap_link_app(void* p) {
@@ -136,10 +119,10 @@ int32_t dap_link_app(void* p) {
         if(furi_message_queue_get(app->queue, &message, FuriWaitForever) == FuriStatusOk) {
             switch(message.event) {
             case DapAppRxV1:
-                dap_app_process_v1(app);
+                dap_app_process_v1();
                 break;
             case DapAppRxV2:
-                dap_app_process_v2(app);
+                dap_app_process_v2();
                 break;
             }
         }
