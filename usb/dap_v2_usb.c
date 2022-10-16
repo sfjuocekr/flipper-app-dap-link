@@ -449,7 +449,10 @@ typedef struct {
     DapRxCallback rx_callback_v1;
     DapRxCallback rx_callback_v2;
     DapRxCallback rx_callback_cdc;
+    DapCDCControlLineCallback control_line_callback_cdc;
+    DapCDCConfigCallback config_callback_cdc;
     void* context;
+    void* context_cdc;
 } DAPState;
 
 static DAPState dap_state = {
@@ -462,7 +465,10 @@ static DAPState dap_state = {
     .rx_callback_v1 = NULL,
     .rx_callback_v2 = NULL,
     .rx_callback_cdc = NULL,
+    .control_line_callback_cdc = NULL,
+    .config_callback_cdc = NULL,
     .context = NULL,
+    .context_cdc = NULL,
 };
 
 static struct usb_cdc_line_coding cdc_config = {0};
@@ -539,6 +545,18 @@ void dap_cdc_usb_set_rx_callback(DapRxCallback callback) {
     dap_state.rx_callback_cdc = callback;
 }
 
+void dap_cdc_usb_set_control_line_callback(DapCDCControlLineCallback callback) {
+    dap_state.control_line_callback_cdc = callback;
+}
+
+void dap_cdc_usb_set_config_callback(DapCDCConfigCallback callback) {
+    dap_state.config_callback_cdc = callback;
+}
+
+void dap_cdc_usb_set_context(void* context) {
+    dap_state.context_cdc = context;
+}
+
 void dap_common_usb_set_context(void* context) {
     dap_state.context = context;
 }
@@ -555,7 +573,9 @@ static void* dap_usb_alloc_string_descr(const char* str) {
     struct usb_string_descriptor* dev_str_desc = malloc(wlen);
     dev_str_desc->bLength = wlen;
     dev_str_desc->bDescriptorType = USB_DTYPE_STRING;
-    for(uint8_t i = 0; i < len; i++) dev_str_desc->wString[i] = str[i];
+    for(uint8_t i = 0; i < len; i++) {
+        dev_str_desc->wString[i] = str[i];
+    }
 
     return dev_str_desc;
 }
@@ -725,7 +745,7 @@ static void cdc_txrx_ep_callback(usbd_device* dev, uint8_t event, uint8_t ep) {
         break;
     case usbd_evt_eprx:
         if(dap_state.rx_callback_cdc != NULL) {
-            dap_state.rx_callback_cdc(dap_state.context);
+            dap_state.rx_callback_cdc(dap_state.context_cdc);
         }
         break;
     default:
@@ -900,23 +920,31 @@ static usbd_respond hid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_cal
         case USB_HID_SETIDLE:
             furi_console_log_printf("set idle");
             return usbd_ack;
+        default:
+            break;
+        }
+    }
+
+    if(((USB_REQ_RECIPIENT | USB_REQ_TYPE) & req->bmRequestType) ==
+           (USB_REQ_INTERFACE | USB_REQ_CLASS) &&
+       req->wIndex == 2) {
+        // class request
+        switch(req->bRequest) {
+        // control line state
         case USB_CDC_SET_CONTROL_LINE_STATE:
             furi_console_log_printf("set control line state");
             cdc_ctrl_line_state = req->wValue;
-            // if(callbacks[if_num] != NULL) {
-            //     if(callbacks[if_num]->ctrl_line_callback != NULL)
-            //         callbacks[if_num]->ctrl_line_callback(
-            //             cb_ctx[if_num], cdc_ctrl_line_state[if_num]);
-            // }
+            if(dap_state.control_line_callback_cdc != NULL) {
+                dap_state.control_line_callback_cdc(cdc_ctrl_line_state, dap_state.context_cdc);
+            }
             return usbd_ack;
         // set cdc line coding
         case USB_CDC_SET_LINE_CODING:
             furi_console_log_printf("set line coding");
             memcpy(&cdc_config, req->data, sizeof(cdc_config));
-            // if(callbacks[if_num] != NULL) {
-            //     if(callbacks[if_num]->config_callback != NULL)
-            //         callbacks[if_num]->config_callback(cb_ctx[if_num], &cdc_config[if_num]);
-            // }
+            if(dap_state.config_callback_cdc != NULL) {
+                dap_state.config_callback_cdc(&cdc_config, dap_state.context_cdc);
+            }
             return usbd_ack;
         // get cdc line coding
         case USB_CDC_GET_LINE_CODING:

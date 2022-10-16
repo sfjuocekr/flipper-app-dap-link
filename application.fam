@@ -11,4 +11,13 @@ App(
     order=20,
     fap_icon="dap_link.png",
     fap_category="Tools",
+    fap_private_libs=[
+        Lib(
+            name="free-dap",
+            cincludes=["."],
+            sources=[
+                "dap.c",
+            ],
+        ),
+    ],
 )

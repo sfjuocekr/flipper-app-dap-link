@@ -1,5 +1,6 @@
 #pragma once
 #include <furi_hal_usb.h>
+#include <usb_cdc.h>
 
 extern FuriHalUsbInterface dap_v2_usb_hid;
 
@@ -26,11 +27,20 @@ void dap_v2_usb_set_rx_callback(DapRxCallback callback);
 
 /************************************ CDC **************************************/
 
+typedef void (*DapCDCControlLineCallback)(uint8_t state, void* context);
+typedef void (*DapCDCConfigCallback)(struct usb_cdc_line_coding* config, void* context);
+
 int32_t dap_cdc_usb_tx(uint8_t* buffer, uint8_t size);
 
 size_t dap_cdc_usb_rx(uint8_t* buffer, size_t size);
 
 void dap_cdc_usb_set_rx_callback(DapRxCallback callback);
+
+void dap_cdc_usb_set_control_line_callback(DapCDCControlLineCallback callback);
+
+void dap_cdc_usb_set_config_callback(DapCDCConfigCallback callback);
+
+void dap_cdc_usb_set_context(void* context);
 
 /*********************************** Common ************************************/
 
