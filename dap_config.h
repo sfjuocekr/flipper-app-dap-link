@@ -6,10 +6,9 @@
 
 /*- Includes ----------------------------------------------------------------*/
 #include <furi_hal_gpio.h>
-#include <furi_hal_resources.h>
 
 /*- Definitions -------------------------------------------------------------*/
-// #define DAP_CONFIG_ENABLE_JTAG
+#define DAP_CONFIG_ENABLE_JTAG
 
 #define DAP_CONFIG_DEFAULT_PORT DAP_PORT_SWD
 #define DAP_CONFIG_DEFAULT_CLOCK 4200000 // Hz
@@ -43,24 +42,26 @@
 extern char usb_serial_number[16];
 
 /*- Implementations ---------------------------------------------------------*/
-#define FLIPPER_SWCLK_PIN gpio_ext_pa7
-#define FLIPPER_SWDIO_PIN gpio_ext_pa6
-#define FLIPPER_RESET_PIN gpio_ext_pa4
+extern GpioPin flipper_dap_swclk_pin;
+extern GpioPin flipper_dap_swdio_pin;
+extern GpioPin flipper_dap_reset_pin;
+extern GpioPin flipper_dap_tdo_pin;
+extern GpioPin flipper_dap_tdi_pin;
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_SWCLK_TCK_write(int value) {
-    furi_hal_gpio_write(&FLIPPER_SWCLK_PIN, value);
+    furi_hal_gpio_write(&flipper_dap_swclk_pin, value);
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_SWDIO_TMS_write(int value) {
-    furi_hal_gpio_write(&FLIPPER_SWDIO_PIN, value);
+    furi_hal_gpio_write(&flipper_dap_swdio_pin, value);
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_TDI_write(int value) {
 #ifdef DAP_CONFIG_ENABLE_JTAG
-    HAL_GPIO_TDI_write(value);
+    furi_hal_gpio_write(&flipper_dap_tdi_pin, value);
 #else
     (void)value;
 #endif
@@ -69,7 +70,7 @@ static inline void DAP_CONFIG_TDI_write(int value) {
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_TDO_write(int value) {
 #ifdef DAP_CONFIG_ENABLE_JTAG
-    HAL_GPIO_TDO_write(value);
+    furi_hal_gpio_write(&flipper_dap_tdo_pin, value);
 #else
     (void)value;
 #endif
@@ -82,23 +83,23 @@ static inline void DAP_CONFIG_nTRST_write(int value) {
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_nRESET_write(int value) {
-    furi_hal_gpio_write(&FLIPPER_RESET_PIN, value);
+    furi_hal_gpio_write(&flipper_dap_reset_pin, value);
 }
 
 //-----------------------------------------------------------------------------
 static inline int DAP_CONFIG_SWCLK_TCK_read(void) {
-    return furi_hal_gpio_read(&FLIPPER_SWCLK_PIN);
+    return furi_hal_gpio_read(&flipper_dap_swclk_pin);
 }
 
 //-----------------------------------------------------------------------------
 static inline int DAP_CONFIG_SWDIO_TMS_read(void) {
-    return furi_hal_gpio_read(&FLIPPER_SWDIO_PIN);
+    return furi_hal_gpio_read(&flipper_dap_swdio_pin);
 }
 
 //-----------------------------------------------------------------------------
 static inline int DAP_CONFIG_TDO_read(void) {
 #ifdef DAP_CONFIG_ENABLE_JTAG
-    return HAL_GPIO_TDO_read();
+    return furi_hal_gpio_read(&flipper_dap_tdo_pin);
 #else
     return 0;
 #endif
@@ -107,7 +108,7 @@ static inline int DAP_CONFIG_TDO_read(void) {
 //-----------------------------------------------------------------------------
 static inline int DAP_CONFIG_TDI_read(void) {
 #ifdef DAP_CONFIG_ENABLE_JTAG
-    return HAL_GPIO_TDI_read();
+    return furi_hal_gpio_read(&flipper_dap_tdi_pin);
 #else
     return 0;
 #endif
@@ -120,84 +121,91 @@ static inline int DAP_CONFIG_nTRST_read(void) {
 
 //-----------------------------------------------------------------------------
 static inline int DAP_CONFIG_nRESET_read(void) {
-    return furi_hal_gpio_read(&FLIPPER_RESET_PIN);
+    return furi_hal_gpio_read(&flipper_dap_reset_pin);
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_SWCLK_TCK_set(void) {
-    LL_GPIO_SetOutputPin(FLIPPER_SWCLK_PIN.port, FLIPPER_SWCLK_PIN.pin);
+    LL_GPIO_SetOutputPin(flipper_dap_swclk_pin.port, flipper_dap_swclk_pin.pin);
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_SWCLK_TCK_clr(void) {
-    LL_GPIO_ResetOutputPin(FLIPPER_SWCLK_PIN.port, FLIPPER_SWCLK_PIN.pin);
+    LL_GPIO_ResetOutputPin(flipper_dap_swclk_pin.port, flipper_dap_swclk_pin.pin);
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_SWDIO_TMS_in(void) {
-    LL_GPIO_SetPinMode(FLIPPER_SWDIO_PIN.port, FLIPPER_SWDIO_PIN.pin, LL_GPIO_MODE_INPUT);
+    LL_GPIO_SetPinMode(flipper_dap_swdio_pin.port, flipper_dap_swdio_pin.pin, LL_GPIO_MODE_INPUT);
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_SWDIO_TMS_out(void) {
-    LL_GPIO_SetPinMode(FLIPPER_SWDIO_PIN.port, FLIPPER_SWDIO_PIN.pin, LL_GPIO_MODE_OUTPUT);
+    LL_GPIO_SetPinMode(flipper_dap_swdio_pin.port, flipper_dap_swdio_pin.pin, LL_GPIO_MODE_OUTPUT);
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_SETUP(void) {
-    furi_hal_gpio_init(&FLIPPER_SWDIO_PIN, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_init(&FLIPPER_SWCLK_PIN, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_init(&FLIPPER_RESET_PIN, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_init(&flipper_dap_swdio_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_init(&flipper_dap_swclk_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_init(&flipper_dap_reset_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
 #ifdef DAP_CONFIG_ENABLE_JTAG
-    HAL_GPIO_TDO_in();
-    HAL_GPIO_TDI_in();
+    furi_hal_gpio_init(&flipper_dap_tdo_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_init(&flipper_dap_tdi_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
 #endif
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_DISCONNECT(void) {
-    furi_hal_gpio_init(&FLIPPER_SWDIO_PIN, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_init(&FLIPPER_SWCLK_PIN, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_init(&FLIPPER_RESET_PIN, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_init(&flipper_dap_swdio_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_init(&flipper_dap_swclk_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_init(&flipper_dap_reset_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
 #ifdef DAP_CONFIG_ENABLE_JTAG
-    HAL_GPIO_TDO_in();
-    HAL_GPIO_TDI_in();
+    furi_hal_gpio_init(&flipper_dap_tdo_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_init(&flipper_dap_tdi_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
 #endif
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_CONNECT_SWD(void) {
-    furi_hal_gpio_init(&FLIPPER_SWDIO_PIN, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_write(&FLIPPER_SWDIO_PIN, true);
+    furi_hal_gpio_init(
+        &flipper_dap_swdio_pin, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_write(&flipper_dap_swdio_pin, true);
 
-    furi_hal_gpio_init(&FLIPPER_SWCLK_PIN, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_write(&FLIPPER_SWCLK_PIN, true);
+    furi_hal_gpio_init(
+        &flipper_dap_swclk_pin, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_write(&flipper_dap_swclk_pin, true);
 
-    furi_hal_gpio_init(&FLIPPER_RESET_PIN, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_write(&FLIPPER_RESET_PIN, true);
+    furi_hal_gpio_init(
+        &flipper_dap_reset_pin, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_write(&flipper_dap_reset_pin, true);
 
 #ifdef DAP_CONFIG_ENABLE_JTAG
-    HAL_GPIO_TDO_in();
-    HAL_GPIO_TDI_in();
+    furi_hal_gpio_init(&flipper_dap_tdo_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_init(&flipper_dap_tdi_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
 #endif
 }
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_CONNECT_JTAG(void) {
-    furi_hal_gpio_init(&FLIPPER_SWDIO_PIN, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_write(&FLIPPER_SWDIO_PIN, true);
+    furi_hal_gpio_init(
+        &flipper_dap_swdio_pin, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_write(&flipper_dap_swdio_pin, true);
 
-    furi_hal_gpio_init(&FLIPPER_SWCLK_PIN, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_write(&FLIPPER_SWCLK_PIN, true);
+    furi_hal_gpio_init(
+        &flipper_dap_swclk_pin, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_write(&flipper_dap_swclk_pin, true);
 
-    furi_hal_gpio_init(&FLIPPER_RESET_PIN, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
-    furi_hal_gpio_write(&FLIPPER_RESET_PIN, true);
+    furi_hal_gpio_init(
+        &flipper_dap_reset_pin, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_write(&flipper_dap_reset_pin, true);
 
 #ifdef DAP_CONFIG_ENABLE_JTAG
-    HAL_GPIO_TDO_in();
+    furi_hal_gpio_init(&flipper_dap_tdo_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
 
-    HAL_GPIO_TDI_out();
-    HAL_GPIO_TDI_set();
+    furi_hal_gpio_init(
+        &flipper_dap_tdi_pin, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
+    furi_hal_gpio_write(&flipper_dap_tdi_pin, true);
 #endif
 }
 

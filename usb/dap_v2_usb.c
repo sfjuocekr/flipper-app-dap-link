@@ -561,7 +561,9 @@ static void* dap_usb_alloc_string_descr(const char* str) {
     struct usb_string_descriptor* dev_str_desc = malloc(wlen);
     dev_str_desc->bLength = wlen;
     dev_str_desc->bDescriptorType = USB_DTYPE_STRING;
-    for(uint8_t i = 0; i < len; i++) dev_str_desc->wString[i] = str[i];
+    for(uint8_t i = 0; i < len; i++) {
+        dev_str_desc->wString[i] = str[i];
+    }
 
     return dev_str_desc;
 }
