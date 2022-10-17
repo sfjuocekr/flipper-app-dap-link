@@ -23,6 +23,10 @@ bool dap_thread_check_for_stop() {
     return (flags & DapThreadEventStop);
 }
 
+void dap_thread_send_stop(FuriThread* thread) {
+    furi_thread_flags_set(furi_thread_get_id(thread), DapThreadEventStop);
+}
+
 GpioPin flipper_dap_swclk_pin;
 GpioPin flipper_dap_swdio_pin;
 GpioPin flipper_dap_reset_pin;
@@ -130,6 +134,7 @@ static int32_t dap_process(void* p) {
 
     // deinit usb
     furi_hal_usb_set_config(usb_config_prev, NULL);
+    dap_common_wait_for_deinit();
     dap_common_usb_free_name();
 
     // free resources
@@ -293,6 +298,14 @@ int32_t dap_link_app(void* p) {
     DapApp* app = dap_app_alloc();
     furi_thread_start(app->dap_thread);
     furi_thread_start(app->cdc_thread);
+
+    while(1) {
+        furi_delay_ms(1000);
+    }
+
+    // send stop event to threads
+    dap_thread_send_stop(app->dap_thread);
+    dap_thread_send_stop(app->cdc_thread);
 
     // wait for threads to stop
     furi_thread_join(app->dap_thread);
