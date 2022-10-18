@@ -24,8 +24,8 @@
 #define DAP_CONFIG_SER_NUM_STR usb_serial_number
 #define DAP_CONFIG_CMSIS_DAP_VER_STR "2.0.0"
 
-//#define DAP_CONFIG_RESET_TARGET_FN     target_specific_reset_function
-//#define DAP_CONFIG_VENDOR_FN           vendor_command_handler_function
+#define DAP_CONFIG_RESET_TARGET_FN dap_app_target_reset
+#define DAP_CONFIG_VENDOR_FN dap_app_vendor_cmd
 
 // Attribute to use for performance-critical functions
 #define DAP_CONFIG_PERFORMANCE_ATTR
@@ -47,6 +47,9 @@ extern GpioPin flipper_dap_swdio_pin;
 extern GpioPin flipper_dap_reset_pin;
 extern GpioPin flipper_dap_tdo_pin;
 extern GpioPin flipper_dap_tdi_pin;
+
+extern void dap_app_vendor_cmd(uint8_t cmd);
+extern void dap_app_target_reset();
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_SWCLK_TCK_write(int value) {

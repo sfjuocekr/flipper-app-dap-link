@@ -2,17 +2,20 @@
 #include <furi_hal_version.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_uart.h>
+#include <furi_hal_console.h>
 #include <furi_hal_resources.h>
+#include <furi_hal_power.h>
 #include <m-string.h>
 #include <dap.h>
 #include "usb/dap_v2_usb.h"
 #include "dap_config.h"
+#include "gui/dap_gui.h"
 
 /***************************************************************************/
 /****************************** DAP COMMON *********************************/
 /***************************************************************************/
 
-#define DAP_PROCESS_THREAD_TIMEOUT 500
+#define DAP_PROCESS_THREAD_TICK 500
 
 typedef enum {
     DapThreadEventStop = (1 << 0),
@@ -88,6 +91,17 @@ static void dap_app_process_v2() {
     dap_v2_usb_tx(tx_packet.data, len);
 }
 
+void dap_app_vendor_cmd(uint8_t cmd) {
+    // cmsis-dap cmd 81
+    if(cmd == 0x01) {
+        furi_hal_power_reset();
+    }
+}
+
+void dap_app_target_reset() {
+    FURI_LOG_I("DAP", "Target reset");
+}
+
 static int32_t dap_process(void* p) {
     UNUSED(p);
 
@@ -116,7 +130,7 @@ static int32_t dap_process(void* p) {
     // work
     DapMessage message;
     while(1) {
-        if(furi_message_queue_get(queue, &message, DAP_PROCESS_THREAD_TIMEOUT) == FuriStatusOk) {
+        if(furi_message_queue_get(queue, &message, DAP_PROCESS_THREAD_TICK) == FuriStatusOk) {
             switch(message.event) {
             case DapAppRxV1:
                 dap_app_process_v1();
@@ -188,6 +202,48 @@ static void cdc_usb_config_callback(struct usb_cdc_line_coding* config, void* co
     furi_thread_flags_set(app->thread_id, CDCThreadEventCDCConfig);
 }
 
+#include <stm32wbxx_ll_usart.h>
+#include <stm32wbxx_ll_lpuart.h>
+
+static void cdc_init_uart(FuriHalUartId uart_id, bool swap_tx_rx, uint32_t baudrate) {
+    switch(uart_id) {
+    case FuriHalUartIdUSART1:
+        furi_hal_console_disable();
+        furi_hal_uart_deinit(uart_id);
+        if(swap_tx_rx) {
+            LL_USART_SetTXRXSwap(USART1, LL_USART_TXRX_SWAPPED);
+        } else {
+            LL_USART_SetTXRXSwap(USART1, LL_USART_TXRX_STANDARD);
+        }
+        furi_hal_uart_init(uart_id, baudrate);
+        break;
+    case FuriHalUartIdLPUART1:
+        furi_hal_uart_deinit(uart_id);
+        if(swap_tx_rx) {
+            LL_LPUART_SetTXRXSwap(LPUART1, LL_LPUART_TXRX_SWAPPED);
+        } else {
+            LL_LPUART_SetTXRXSwap(LPUART1, LL_LPUART_TXRX_STANDARD);
+        }
+        furi_hal_uart_init(uart_id, baudrate);
+        break;
+    }
+}
+
+static void cdc_deinit_uart(FuriHalUartId uart_id) {
+    switch(uart_id) {
+    case FuriHalUartIdUSART1:
+        furi_hal_uart_deinit(uart_id);
+        LL_USART_SetTXRXSwap(USART1, LL_USART_TXRX_STANDARD);
+        furi_hal_uart_init(uart_id, 230400);
+        furi_hal_console_enable();
+        break;
+    case FuriHalUartIdLPUART1:
+        furi_hal_uart_deinit(uart_id);
+        LL_LPUART_SetTXRXSwap(LPUART1, LL_LPUART_TXRX_STANDARD);
+        break;
+    }
+}
+
 static int32_t cdc_process(void* p) {
     UNUSED(p);
     CDCProcess* app = malloc(sizeof(CDCProcess));
@@ -198,7 +254,7 @@ static int32_t cdc_process(void* p) {
     const uint8_t rx_buffer_size = 64;
     uint8_t* rx_buffer = malloc(rx_buffer_size);
 
-    furi_hal_uart_init(app->uart_id, 115200);
+    cdc_init_uart(app->uart_id, false, 115200);
     furi_hal_uart_set_irq_cb(app->uart_id, cdc_uart_irq_cb, app);
 
     dap_cdc_usb_set_context(app);
@@ -239,7 +295,7 @@ static int32_t cdc_process(void* p) {
     }
 
     furi_hal_uart_set_irq_cb(app->uart_id, NULL, NULL);
-    furi_hal_uart_deinit(app->uart_id);
+    cdc_deinit_uart(app->uart_id);
     free(rx_buffer);
     furi_stream_buffer_free(app->rx_stream);
     free(app);
@@ -272,8 +328,9 @@ static FuriThread* furi_thread_alloc_ex(
 
 static DapApp* dap_app_alloc() {
     DapApp* dap_app = malloc(sizeof(DapApp));
-    dap_app->dap_thread = furi_thread_alloc_ex("DAP", 1024, dap_process, dap_app);
-    dap_app->cdc_thread = furi_thread_alloc_ex("CDC", 1024, cdc_process, dap_app);
+    dap_app->dap_thread = furi_thread_alloc_ex("DAP Process", 1024, dap_process, dap_app);
+    dap_app->cdc_thread = furi_thread_alloc_ex("DAP CDC", 1024, cdc_process, dap_app);
+    dap_app->gui_thread = furi_thread_alloc_ex("DAP GUI", 1024, dap_gui_thread, dap_app);
     return dap_app;
 }
 
@@ -281,6 +338,7 @@ static void dap_app_free(DapApp* dap_app) {
     furi_assert(dap_app);
     furi_thread_free(dap_app->dap_thread);
     furi_thread_free(dap_app->cdc_thread);
+    furi_thread_free(dap_app->gui_thread);
     free(dap_app);
 }
 
@@ -290,6 +348,10 @@ int32_t dap_link_app(void* p) {
     // setup default pins
     flipper_dap_swclk_pin = gpio_ext_pa7;
     flipper_dap_swdio_pin = gpio_ext_pa6;
+
+    // flipper_dap_swclk_pin = (GpioPin){.port = GPIOA, .pin = LL_GPIO_PIN_14};
+    // flipper_dap_swdio_pin = (GpioPin){.port = GPIOA, .pin = LL_GPIO_PIN_13};
+
     flipper_dap_reset_pin = gpio_ext_pa4;
     flipper_dap_tdo_pin = gpio_ext_pb3;
     flipper_dap_tdi_pin = gpio_ext_pb2;
@@ -298,10 +360,10 @@ int32_t dap_link_app(void* p) {
     DapApp* app = dap_app_alloc();
     furi_thread_start(app->dap_thread);
     furi_thread_start(app->cdc_thread);
+    furi_thread_start(app->gui_thread);
 
-    while(1) {
-        furi_delay_ms(1000);
-    }
+    // wait until gui thread is finished
+    furi_thread_join(app->gui_thread);
 
     // send stop event to threads
     dap_thread_send_stop(app->dap_thread);
