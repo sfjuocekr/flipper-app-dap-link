@@ -26,22 +26,16 @@ typedef struct {
 typedef enum {
     DapSwdPinsPA7PA6, // Pins 2, 3
     DapSwdPinsPA14PA13, // Pins 10, 12
-
-    DapSwdPinsCount,
 } DapSwdPins;
 
 typedef enum {
     DapUartTypeUSART1, // Pins 13, 14
     DapUartTypeLPUART1, // Pins 15, 16
-
-    DapUartTypeCount,
 } DapUartType;
 
 typedef enum {
     DapUartTXRXNormal,
     DapUartTXRXSwap,
-
-    DapUartTXRXCount,
 } DapUartTXRX;
 
 typedef struct {
@@ -55,3 +49,7 @@ typedef struct DapApp DapApp;
 void dap_app_get_state(DapApp* app, DapState* state);
 
 const char* dap_app_get_serial(DapApp* app);
+
+void dap_app_set_config(DapApp* app, DapConfig* config);
+
+DapConfig* dap_app_get_config(DapApp* app);

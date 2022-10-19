@@ -21,7 +21,6 @@ typedef struct {
     NotificationApp* notifications;
     ViewDispatcher* view_dispatcher;
     SceneManager* scene_manager;
-    DapConfig* config;
 
     VariableItemList* var_item_list;
     DapMainView* main_view;

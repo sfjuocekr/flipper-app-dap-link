@@ -11,7 +11,9 @@ static void swd_pins_cb(VariableItem* item) {
 
     variable_item_set_current_value_text(item, swd_pins[index]);
 
-    app->config->swd_pins = index;
+    DapConfig* config = dap_app_get_config(app->dap_app);
+    config->swd_pins = index;
+    dap_app_set_config(app->dap_app, config);
 }
 
 static void uart_pins_cb(VariableItem* item) {
@@ -20,7 +22,9 @@ static void uart_pins_cb(VariableItem* item) {
 
     variable_item_set_current_value_text(item, uart_pins[index]);
 
-    app->config->uart_pins = index;
+    DapConfig* config = dap_app_get_config(app->dap_app);
+    config->uart_pins = index;
+    dap_app_set_config(app->dap_app, config);
 }
 
 static void uart_swap_cb(VariableItem* item) {
@@ -29,7 +33,9 @@ static void uart_swap_cb(VariableItem* item) {
 
     variable_item_set_current_value_text(item, uart_swap[index]);
 
-    app->config->uart_swap = index;
+    DapConfig* config = dap_app_get_config(app->dap_app);
+    config->uart_swap = index;
+    dap_app_set_config(app->dap_app, config);
 }
 
 static void ok_cb(void* context, uint32_t index) {
@@ -53,20 +59,22 @@ void dap_scene_config_on_enter(void* context) {
     DapGuiApp* app = context;
     VariableItemList* var_item_list = app->var_item_list;
     VariableItem* item;
+    DapConfig* config = dap_app_get_config(app->dap_app);
+
+    item = variable_item_list_add(
+        var_item_list, "SWC SWD Pins", COUNT_OF(swd_pins), swd_pins_cb, app);
+    variable_item_set_current_value_index(item, config->swd_pins);
+    variable_item_set_current_value_text(item, swd_pins[config->swd_pins]);
 
     item =
-        variable_item_list_add(var_item_list, "SWC SWD Pins", DapSwdPinsCount, swd_pins_cb, app);
-    variable_item_set_current_value_index(item, app->config->swd_pins);
-    variable_item_set_current_value_text(item, swd_pins[app->config->swd_pins]);
+        variable_item_list_add(var_item_list, "UART Pins", COUNT_OF(uart_pins), uart_pins_cb, app);
+    variable_item_set_current_value_index(item, config->uart_pins);
+    variable_item_set_current_value_text(item, uart_pins[config->uart_pins]);
 
-    item = variable_item_list_add(var_item_list, "UART Pins", DapUartTypeCount, uart_pins_cb, app);
-    variable_item_set_current_value_index(item, app->config->uart_pins);
-    variable_item_set_current_value_text(item, uart_pins[app->config->uart_pins]);
-
-    item =
-        variable_item_list_add(var_item_list, "Swap TX RX", DapUartTXRXCount, uart_swap_cb, app);
-    variable_item_set_current_value_index(item, app->config->uart_swap);
-    variable_item_set_current_value_text(item, uart_swap[app->config->uart_swap]);
+    item = variable_item_list_add(
+        var_item_list, "Swap TX RX", COUNT_OF(uart_swap), uart_swap_cb, app);
+    variable_item_set_current_value_index(item, config->uart_swap);
+    variable_item_set_current_value_text(item, uart_swap[config->uart_swap]);
 
     // 3, 4, 5 indexes
     item = variable_item_list_add(var_item_list, "Help and Pinout", 0, NULL, NULL);

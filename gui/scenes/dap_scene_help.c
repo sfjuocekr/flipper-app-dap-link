@@ -2,7 +2,7 @@
 
 void dap_scene_help_on_enter(void* context) {
     DapGuiApp* app = context;
-    DapConfig* config = app->config;
+    DapConfig* config = dap_app_get_config(app->dap_app);
     FuriString* string = furi_string_alloc();
 
     furi_string_cat(string, "CMSIS DAP/DAP Link v2\r\n");

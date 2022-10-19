@@ -60,8 +60,10 @@ typedef enum {
     DAPThreadEventRxV2 = (1 << 2),
     DAPThreadEventUSBConnect = (1 << 3),
     DAPThreadEventUSBDisconnect = (1 << 4),
+    DAPThreadEventApplyConfig = (1 << 5),
     DAPThreadEventAll = DAPThreadEventStop | DAPThreadEventRxV1 | DAPThreadEventRxV2 |
-                        DAPThreadEventUSBConnect | DAPThreadEventUSBDisconnect,
+                        DAPThreadEventUSBConnect | DAPThreadEventUSBDisconnect |
+                        DAPThreadEventApplyConfig,
 } DAPThreadEvent;
 
 #define USB_SERIAL_NUMBER_LEN 16
@@ -124,11 +126,59 @@ void dap_app_target_reset() {
     FURI_LOG_I("DAP", "Target reset");
 }
 
+static void dap_init_gpio(DapSwdPins swd_pins) {
+    switch(swd_pins) {
+    case DapSwdPinsPA7PA6:
+        flipper_dap_swclk_pin = gpio_ext_pa7;
+        flipper_dap_swdio_pin = gpio_ext_pa6;
+        break;
+    case DapSwdPinsPA14PA13:
+        flipper_dap_swclk_pin = (GpioPin){.port = GPIOA, .pin = LL_GPIO_PIN_14};
+        flipper_dap_swdio_pin = (GpioPin){.port = GPIOA, .pin = LL_GPIO_PIN_13};
+        break;
+    }
+
+    flipper_dap_reset_pin = gpio_ext_pa4;
+    flipper_dap_tdo_pin = gpio_ext_pb3;
+    flipper_dap_tdi_pin = gpio_ext_pb2;
+}
+
+static void dap_deinit_gpio(DapSwdPins swd_pins) {
+    // setup gpio pins to default state
+    furi_hal_gpio_init(&flipper_dap_reset_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
+    furi_hal_gpio_init(&flipper_dap_tdo_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
+    furi_hal_gpio_init(&flipper_dap_tdi_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
+
+    if(DapSwdPinsPA14PA13 == swd_pins) {
+        // PA14 and PA13 are used by SWD
+        furi_hal_gpio_init_ex(
+            &flipper_dap_swclk_pin,
+            GpioModeAltFunctionPushPull,
+            GpioPullDown,
+            GpioSpeedLow,
+            GpioAltFn0JTCK_SWCLK);
+        furi_hal_gpio_init_ex(
+            &flipper_dap_swdio_pin,
+            GpioModeAltFunctionPushPull,
+            GpioPullUp,
+            GpioSpeedVeryHigh,
+            GpioAltFn0JTMS_SWDIO);
+    } else {
+        furi_hal_gpio_init(&flipper_dap_swclk_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
+        furi_hal_gpio_init(&flipper_dap_swdio_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
+    }
+}
+
 static int32_t dap_process(void* p) {
-    DapState* dap_state = &((DapApp*)p)->state;
+    DapApp* app = p;
+    DapState* dap_state = &(app->state);
 
     // allocate resources
     FuriHalUsbInterface* usb_config_prev;
+    DapSwdPins swd_pins_prev = DapSwdPinsPA7PA6;
+
+    // init pins
+    dap_init_gpio(swd_pins_prev);
 
     // init dap
     dap_init();
@@ -176,6 +226,14 @@ static int32_t dap_process(void* p) {
                 dap_state->dap_version = DapVersionUnknown;
             }
 
+            if(events & DAPThreadEventApplyConfig) {
+                if(swd_pins_prev != app->config.swd_pins) {
+                    dap_deinit_gpio(swd_pins_prev);
+                    swd_pins_prev = app->config.swd_pins;
+                    dap_init_gpio(swd_pins_prev);
+                }
+            }
+
             if(events & DAPThreadEventStop) {
                 break;
             }
@@ -186,7 +244,7 @@ static int32_t dap_process(void* p) {
     furi_hal_usb_set_config(usb_config_prev, NULL);
     dap_common_wait_for_deinit();
     dap_common_usb_free_name();
-
+    dap_deinit_gpio(swd_pins_prev);
     return 0;
 }
 
@@ -199,8 +257,9 @@ typedef enum {
     CDCThreadEventUARTRx = (1 << 1),
     CDCThreadEventCDCRx = (1 << 2),
     CDCThreadEventCDCConfig = (1 << 3),
+    CDCThreadEventApplyConfig = (1 << 4),
     CDCThreadEventAll = CDCThreadEventStop | CDCThreadEventUARTRx | CDCThreadEventCDCRx |
-                        CDCThreadEventCDCConfig,
+                        CDCThreadEventCDCConfig | CDCThreadEventApplyConfig,
 } CDCThreadEvent;
 
 typedef struct {
@@ -238,21 +297,26 @@ static void cdc_usb_config_callback(struct usb_cdc_line_coding* config, void* co
 #include <stm32wbxx_ll_usart.h>
 #include <stm32wbxx_ll_lpuart.h>
 
-static void cdc_init_uart(FuriHalUartId uart_id, bool swap_tx_rx, uint32_t baudrate) {
-    switch(uart_id) {
-    case FuriHalUartIdUSART1:
+static FuriHalUartId cdc_init_uart(DapUartType type, DapUartTXRX swap, uint32_t baudrate) {
+    FuriHalUartId uart_id = FuriHalUartIdUSART1;
+    if(baudrate == 0) baudrate = 115200;
+
+    switch(type) {
+    case DapUartTypeUSART1:
+        uart_id = FuriHalUartIdUSART1;
         furi_hal_console_disable();
         furi_hal_uart_deinit(uart_id);
-        if(swap_tx_rx) {
+        if(swap == DapUartTXRXSwap) {
             LL_USART_SetTXRXSwap(USART1, LL_USART_TXRX_SWAPPED);
         } else {
             LL_USART_SetTXRXSwap(USART1, LL_USART_TXRX_STANDARD);
         }
         furi_hal_uart_init(uart_id, baudrate);
         break;
-    case FuriHalUartIdLPUART1:
+    case DapUartTypeLPUART1:
+        uart_id = FuriHalUartIdLPUART1;
         furi_hal_uart_deinit(uart_id);
-        if(swap_tx_rx) {
+        if(swap == DapUartTXRXSwap) {
             LL_LPUART_SetTXRXSwap(LPUART1, LL_LPUART_TXRX_SWAPPED);
         } else {
             LL_LPUART_SetTXRXSwap(LPUART1, LL_LPUART_TXRX_STANDARD);
@@ -260,35 +324,38 @@ static void cdc_init_uart(FuriHalUartId uart_id, bool swap_tx_rx, uint32_t baudr
         furi_hal_uart_init(uart_id, baudrate);
         break;
     }
+
+    return uart_id;
 }
 
-static void cdc_deinit_uart(FuriHalUartId uart_id) {
-    switch(uart_id) {
-    case FuriHalUartIdUSART1:
-        furi_hal_uart_deinit(uart_id);
+static void cdc_deinit_uart(DapUartType type) {
+    switch(type) {
+    case DapUartTypeUSART1:
+        furi_hal_uart_deinit(FuriHalUartIdUSART1);
         LL_USART_SetTXRXSwap(USART1, LL_USART_TXRX_STANDARD);
-        furi_hal_uart_init(uart_id, 230400);
-        furi_hal_console_enable();
+        furi_hal_console_init();
         break;
-    case FuriHalUartIdLPUART1:
-        furi_hal_uart_deinit(uart_id);
+    case DapUartTypeLPUART1:
+        furi_hal_uart_deinit(FuriHalUartIdLPUART1);
         LL_LPUART_SetTXRXSwap(LPUART1, LL_LPUART_TXRX_STANDARD);
         break;
     }
 }
 
 static int32_t cdc_process(void* p) {
-    DapState* dap_state = &((DapApp*)p)->state;
+    DapApp* dap_app = p;
+    DapState* dap_state = &(dap_app->state);
+    DapUartType uart_type_prev = dap_app->config.uart_pins;
+    DapUartTXRX uart_txrx_prev = dap_app->config.uart_swap;
 
     CDCProcess* app = malloc(sizeof(CDCProcess));
     app->thread_id = furi_thread_get_id(furi_thread_get_current());
     app->rx_stream = furi_stream_buffer_alloc(512, 1);
-    app->uart_id = FuriHalUartIdLPUART1;
 
     const uint8_t rx_buffer_size = 64;
     uint8_t* rx_buffer = malloc(rx_buffer_size);
 
-    cdc_init_uart(app->uart_id, false, 115200);
+    app->uart_id = cdc_init_uart(uart_type_prev, uart_txrx_prev, dap_state->cdc_baudrate);
     furi_hal_uart_set_irq_cb(app->uart_id, cdc_uart_irq_cb, app);
 
     dap_cdc_usb_set_context(app);
@@ -325,14 +392,21 @@ static int32_t cdc_process(void* p) {
                 dap_state->cdc_tx_counter += len;
             }
 
+            if(events & CDCThreadEventApplyConfig) {
+                cdc_deinit_uart(uart_type_prev);
+                uart_type_prev = dap_app->config.uart_pins;
+                uart_txrx_prev = dap_app->config.uart_swap;
+                app->uart_id =
+                    cdc_init_uart(uart_type_prev, uart_txrx_prev, dap_state->cdc_baudrate);
+            }
+
             if(events & CDCThreadEventStop) {
                 break;
             }
         }
     }
 
-    furi_hal_uart_set_irq_cb(app->uart_id, NULL, NULL);
-    cdc_deinit_uart(app->uart_id);
+    cdc_deinit_uart(uart_type_prev);
     free(rx_buffer);
     furi_stream_buffer_free(app->rx_stream);
     free(app);
@@ -387,19 +461,18 @@ void dap_app_connect_jtag() {
     app_handle->state.dap_mode = DapModeJTAG;
 }
 
+void dap_app_set_config(DapApp* app, DapConfig* config) {
+    app->config = *config;
+    furi_thread_flags_set(furi_thread_get_id(app->dap_thread), DAPThreadEventApplyConfig);
+    furi_thread_flags_set(furi_thread_get_id(app->cdc_thread), CDCThreadEventApplyConfig);
+}
+
+DapConfig* dap_app_get_config(DapApp* app) {
+    return &app->config;
+}
+
 int32_t dap_link_app(void* p) {
     UNUSED(p);
-
-    // setup default pins
-    flipper_dap_swclk_pin = gpio_ext_pa7;
-    flipper_dap_swdio_pin = gpio_ext_pa6;
-
-    // flipper_dap_swclk_pin = (GpioPin){.port = GPIOA, .pin = LL_GPIO_PIN_14};
-    // flipper_dap_swdio_pin = (GpioPin){.port = GPIOA, .pin = LL_GPIO_PIN_13};
-
-    flipper_dap_reset_pin = gpio_ext_pa4;
-    flipper_dap_tdo_pin = gpio_ext_pb3;
-    flipper_dap_tdi_pin = gpio_ext_pb2;
 
     // alloc app
     DapApp* app = dap_app_alloc();
@@ -422,13 +495,6 @@ int32_t dap_link_app(void* p) {
 
     // free app
     dap_app_free(app);
-
-    // setup gpio pins to default state
-    furi_hal_gpio_init(&flipper_dap_swclk_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_init(&flipper_dap_swdio_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_init(&flipper_dap_reset_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_init(&flipper_dap_tdo_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_init(&flipper_dap_tdi_pin, GpioModeAnalog, GpioPullNo, GpioSpeedLow);
 
     return 0;
 }
