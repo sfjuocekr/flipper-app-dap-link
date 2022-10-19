@@ -23,7 +23,7 @@ static void dap_gui_tick_event_callback(void* context) {
 
 DapGuiApp* dap_gui_alloc() {
     DapGuiApp* app = malloc(sizeof(DapGuiApp));
-    app->config = malloc(sizeof(DapGuiAppConfig));
+    app->config = malloc(sizeof(DapConfig));
     app->gui = furi_record_open(RECORD_GUI);
     app->view_dispatcher = view_dispatcher_alloc();
     app->scene_manager = scene_manager_alloc(&dap_scene_handlers, app);
@@ -50,6 +50,10 @@ DapGuiApp* dap_gui_alloc() {
     view_dispatcher_add_view(
         app->view_dispatcher, DapGuiAppViewMainView, dap_main_view_get_view(app->main_view));
 
+    app->widget = widget_alloc();
+    view_dispatcher_add_view(
+        app->view_dispatcher, DapGuiAppViewWidget, widget_get_view(app->widget));
+
     scene_manager_next_scene(app->scene_manager, DapSceneMain);
 
     return app;
@@ -61,6 +65,9 @@ void dap_gui_free(DapGuiApp* app) {
 
     view_dispatcher_remove_view(app->view_dispatcher, DapGuiAppViewMainView);
     dap_main_view_free(app->main_view);
+
+    view_dispatcher_remove_view(app->view_dispatcher, DapGuiAppViewWidget);
+    widget_free(app->widget);
 
     // View dispatcher
     view_dispatcher_free(app->view_dispatcher);

@@ -15,6 +15,35 @@ typedef struct {
     uint32_t cdc_rx_counter;
 } DapState;
 
+typedef enum {
+    DapSwdPinsPA7PA6, // Pins 2, 3
+    DapSwdPinsPA14PA13, // Pins 10, 12
+
+    DapSwdPinsCount,
+} DapSwdPins;
+
+typedef enum {
+    DapUartTypeUSART1, // Pins 13, 14
+    DapUartTypeLPUART1, // Pins 15, 16
+
+    DapUartTypeCount,
+} DapUartType;
+
+typedef enum {
+    DapUartTXRXNormal,
+    DapUartTXRXSwap,
+
+    DapUartTXRXCount,
+} DapUartTXRX;
+
+typedef struct {
+    DapSwdPins swd_pins;
+    DapUartType uart_pins;
+    DapUartTXRX uart_swap;
+} DapConfig;
+
 typedef struct DapApp DapApp;
 
 void dap_app_get_state(DapApp* app, DapState* state);
+
+const char* dap_app_get_serial(DapApp* app);

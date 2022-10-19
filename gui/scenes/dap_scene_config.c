@@ -1,8 +1,9 @@
 #include "../dap_gui_i.h"
 
-static const char* swd_pins[] = {"2,3", "10,12"};
-static const char* uart_pins[] = {"13,14", "15,16"};
-static const char* uart_swap[] = {"No", "Yes"};
+static const char* swd_pins[] = {[DapSwdPinsPA7PA6] = "2,3", [DapSwdPinsPA14PA13] = "10,12"};
+
+static const char* uart_pins[] = {[DapUartTypeUSART1] = "13,14", [DapUartTypeLPUART1] = "15,16"};
+static const char* uart_swap[] = {[DapUartTXRXNormal] = "No", [DapUartTXRXSwap] = "Yes"};
 
 static void swd_pins_cb(VariableItem* item) {
     DapGuiApp* app = variable_item_get_context(item);
@@ -31,31 +32,63 @@ static void uart_swap_cb(VariableItem* item) {
     app->config->uart_swap = index;
 }
 
+static void ok_cb(void* context, uint32_t index) {
+    DapGuiApp* app = context;
+    switch(index) {
+    case 3:
+        view_dispatcher_send_custom_event(app->view_dispatcher, DapAppCustomEventHelp);
+        break;
+    case 4:
+        view_dispatcher_send_custom_event(app->view_dispatcher, DapAppCustomEventSaveConfig);
+        break;
+    case 5:
+        view_dispatcher_send_custom_event(app->view_dispatcher, DapAppCustomEventLoadConfig);
+        break;
+    default:
+        break;
+    }
+}
+
 void dap_scene_config_on_enter(void* context) {
     DapGuiApp* app = context;
     VariableItemList* var_item_list = app->var_item_list;
     VariableItem* item;
 
-    item = variable_item_list_add(var_item_list, "SWC/D Pins", 2, swd_pins_cb, app);
+    item =
+        variable_item_list_add(var_item_list, "SWC SWD Pins", DapSwdPinsCount, swd_pins_cb, app);
     variable_item_set_current_value_index(item, app->config->swd_pins);
     variable_item_set_current_value_text(item, swd_pins[app->config->swd_pins]);
 
-    item = variable_item_list_add(var_item_list, "UART Pins", 2, uart_pins_cb, app);
+    item = variable_item_list_add(var_item_list, "UART Pins", DapUartTypeCount, uart_pins_cb, app);
     variable_item_set_current_value_index(item, app->config->uart_pins);
     variable_item_set_current_value_text(item, uart_pins[app->config->uart_pins]);
 
-    item = variable_item_list_add(var_item_list, "Swap TX/RX", 2, uart_swap_cb, app);
+    item =
+        variable_item_list_add(var_item_list, "Swap TX RX", DapUartTXRXCount, uart_swap_cb, app);
     variable_item_set_current_value_index(item, app->config->uart_swap);
     variable_item_set_current_value_text(item, uart_swap[app->config->uart_swap]);
 
+    // 3, 4, 5 indexes
+    item = variable_item_list_add(var_item_list, "Help and Pinout", 0, NULL, NULL);
+    item = variable_item_list_add(var_item_list, "Save Config", 0, NULL, NULL);
+    item = variable_item_list_add(var_item_list, "Load Config", 0, NULL, NULL);
+
     variable_item_list_set_selected_item(
         var_item_list, scene_manager_get_scene_state(app->scene_manager, DapSceneConfig));
+
+    variable_item_list_set_enter_callback(var_item_list, ok_cb, app);
+
     view_dispatcher_switch_to_view(app->view_dispatcher, DapGuiAppViewVarItemList);
 }
 
 bool dap_scene_config_on_event(void* context, SceneManagerEvent event) {
-    UNUSED(context);
-    UNUSED(event);
+    DapGuiApp* app = context;
+    if(event.type == SceneManagerEventTypeCustom) {
+        if(event.event == DapAppCustomEventHelp) {
+            scene_manager_next_scene(app->scene_manager, DapSceneHelp);
+            return true;
+        }
+    }
     return false;
 }
 

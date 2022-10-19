@@ -6,6 +6,7 @@
 #include <gui/modules/submenu.h>
 #include <notification/notification_messages.h>
 #include <gui/modules/variable_item_list.h>
+#include <gui/modules/widget.h>
 
 #include "dap_gui.h"
 #include "../dap_link.h"
@@ -14,25 +15,21 @@
 #include "views/dap_main_view.h"
 
 typedef struct {
-    uint32_t swd_pins;
-    uint32_t uart_pins;
-    uint32_t uart_swap;
-} DapGuiAppConfig;
-
-typedef struct {
     DapApp* dap_app;
 
     Gui* gui;
     NotificationApp* notifications;
     ViewDispatcher* view_dispatcher;
     SceneManager* scene_manager;
-    DapGuiAppConfig* config;
+    DapConfig* config;
 
     VariableItemList* var_item_list;
     DapMainView* main_view;
+    Widget* widget;
 } DapGuiApp;
 
 typedef enum {
     DapGuiAppViewVarItemList,
     DapGuiAppViewMainView,
+    DapGuiAppViewWidget,
 } DapGuiAppView;

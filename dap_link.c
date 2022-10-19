@@ -70,6 +70,11 @@ typedef struct {
 #define USB_SERIAL_NUMBER_LEN 16
 char usb_serial_number[USB_SERIAL_NUMBER_LEN] = {0};
 
+const char* dap_app_get_serial(DapApp* app) {
+    UNUSED(app);
+    return usb_serial_number;
+}
+
 static void dap_app_rx1_callback(void* context) {
     furi_assert(context);
     FuriMessageQueue* queue = context;
