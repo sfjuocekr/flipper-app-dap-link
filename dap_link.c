@@ -10,10 +10,23 @@
 #include "usb/dap_v2_usb.h"
 #include "dap_config.h"
 #include "gui/dap_gui.h"
+#include "dap_link.h"
 
 /***************************************************************************/
 /****************************** DAP COMMON *********************************/
 /***************************************************************************/
+
+struct DapApp {
+    FuriThread* dap_thread;
+    FuriThread* cdc_thread;
+    FuriThread* gui_thread;
+
+    DapState state;
+};
+
+void dap_app_get_state(DapApp* app, DapState* state) {
+    *state = app->state;
+}
 
 #define DAP_PROCESS_THREAD_TICK 500
 
@@ -103,7 +116,7 @@ void dap_app_target_reset() {
 }
 
 static int32_t dap_process(void* p) {
-    UNUSED(p);
+    DapState* dap_state = &((DapApp*)p)->state;
 
     // allocate resources
     FuriMessageQueue* queue = furi_message_queue_alloc(64, sizeof(DapMessage));
@@ -134,9 +147,11 @@ static int32_t dap_process(void* p) {
             switch(message.event) {
             case DapAppRxV1:
                 dap_app_process_v1();
+                dap_state->dap_counter++;
                 break;
             case DapAppRxV2:
                 dap_app_process_v2();
+                dap_state->dap_counter++;
                 break;
             }
         }
@@ -245,7 +260,8 @@ static void cdc_deinit_uart(FuriHalUartId uart_id) {
 }
 
 static int32_t cdc_process(void* p) {
-    UNUSED(p);
+    DapState* dap_state = &((DapApp*)p)->state;
+
     CDCProcess* app = malloc(sizeof(CDCProcess));
     app->thread_id = furi_thread_get_id(furi_thread_get_current());
     app->rx_stream = furi_stream_buffer_alloc(512, 1);
@@ -270,6 +286,7 @@ static int32_t cdc_process(void* p) {
                 if(app->line_coding.dwDTERate > 0) {
                     furi_hal_uart_set_br(app->uart_id, app->line_coding.dwDTERate);
                 }
+                dap_state->cdc_baudrate = app->line_coding.dwDTERate;
             }
 
             if(events & CDCThreadEventUARTRx) {
@@ -279,6 +296,7 @@ static int32_t cdc_process(void* p) {
                 if(len > 0) {
                     dap_cdc_usb_tx(rx_buffer, len);
                 }
+                dap_state->cdc_rx_counter += len;
             }
 
             if(events & CDCThreadEventCDCRx) {
@@ -286,6 +304,7 @@ static int32_t cdc_process(void* p) {
                 if(len > 0) {
                     furi_hal_uart_tx(app->uart_id, rx_buffer, len);
                 }
+                dap_state->cdc_tx_counter += len;
             }
 
             if(events & CDCThreadEventStop) {
@@ -306,12 +325,6 @@ static int32_t cdc_process(void* p) {
 /***************************************************************************/
 /******************************* MAIN APP **********************************/
 /***************************************************************************/
-
-typedef struct {
-    FuriThread* dap_thread;
-    FuriThread* cdc_thread;
-    FuriThread* gui_thread;
-} DapApp;
 
 static FuriThread* furi_thread_alloc_ex(
     const char* name,
@@ -342,6 +355,20 @@ static void dap_app_free(DapApp* dap_app) {
     free(dap_app);
 }
 
+static DapApp* app_handle = NULL;
+
+void dap_app_disconnect() {
+    app_handle->state.dap_mode = DapModeDisconnected;
+}
+
+void dap_app_connect_swd() {
+    app_handle->state.dap_mode = DapModeSWD;
+}
+
+void dap_app_connect_jtag() {
+    app_handle->state.dap_mode = DapModeJTAG;
+}
+
 int32_t dap_link_app(void* p) {
     UNUSED(p);
 
@@ -358,6 +385,8 @@ int32_t dap_link_app(void* p) {
 
     // alloc app
     DapApp* app = dap_app_alloc();
+    app_handle = app;
+
     furi_thread_start(app->dap_thread);
     furi_thread_start(app->cdc_thread);
     furi_thread_start(app->gui_thread);

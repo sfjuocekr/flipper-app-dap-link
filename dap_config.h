@@ -50,6 +50,9 @@ extern GpioPin flipper_dap_tdi_pin;
 
 extern void dap_app_vendor_cmd(uint8_t cmd);
 extern void dap_app_target_reset();
+extern void dap_app_disconnect();
+extern void dap_app_connect_swd();
+extern void dap_app_connect_jtag();
 
 //-----------------------------------------------------------------------------
 static inline void DAP_CONFIG_SWCLK_TCK_write(int value) {
@@ -167,6 +170,7 @@ static inline void DAP_CONFIG_DISCONNECT(void) {
     furi_hal_gpio_init(&flipper_dap_tdo_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
     furi_hal_gpio_init(&flipper_dap_tdi_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
 #endif
+    dap_app_disconnect();
 }
 
 //-----------------------------------------------------------------------------
@@ -187,6 +191,7 @@ static inline void DAP_CONFIG_CONNECT_SWD(void) {
     furi_hal_gpio_init(&flipper_dap_tdo_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
     furi_hal_gpio_init(&flipper_dap_tdi_pin, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);
 #endif
+    dap_app_connect_swd();
 }
 
 //-----------------------------------------------------------------------------
@@ -210,6 +215,7 @@ static inline void DAP_CONFIG_CONNECT_JTAG(void) {
         &flipper_dap_tdi_pin, GpioModeOutputPushPull, GpioPullNo, GpioSpeedVeryHigh);
     furi_hal_gpio_write(&flipper_dap_tdi_pin, true);
 #endif
+    dap_app_connect_jtag();
 }
 
 //-----------------------------------------------------------------------------

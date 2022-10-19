@@ -1,5 +1,5 @@
 #pragma once
 
 typedef enum {
-    DapAppCustomEventSubmenu,
+    DapAppCustomEventConfig,
 } DapAppCustomEvent;
