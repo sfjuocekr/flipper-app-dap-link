@@ -14,7 +14,9 @@ struct DapMainView {
 };
 
 typedef struct {
-    DapMainVewMode mode;
+    DapMainViewMode mode;
+    DapMainViewVersion version;
+    bool usb_connected;
     uint32_t baudrate;
     bool dap_active;
     bool tx_active;
@@ -30,7 +32,21 @@ static void dap_main_view_draw_callback(Canvas* canvas, void* _model) {
     canvas_set_color(canvas, ColorBlack);
     canvas_draw_box(canvas, 0, 0, 127, 11);
     canvas_set_color(canvas, ColorWhite);
-    canvas_draw_str_aligned(canvas, 64, 9, AlignCenter, AlignBottom, "DAP Link");
+
+    const char* header_string;
+    if(model->usb_connected) {
+        if(model->version == DapMainViewVersionV1) {
+            header_string = "DAP Link V1 Connected";
+        } else if(model->version == DapMainViewVersionV2) {
+            header_string = "DAP Link V2 Connected";
+        } else {
+            header_string = "DAP Link Connected";
+        }
+    } else {
+        header_string = "DAP Link";
+    }
+
+    canvas_draw_str_aligned(canvas, 64, 9, AlignCenter, AlignBottom, header_string);
 
     canvas_set_color(canvas, ColorBlack);
     if(model->dap_active) {
@@ -42,13 +58,13 @@ static void dap_main_view_draw_callback(Canvas* canvas, void* _model) {
     }
 
     switch(model->mode) {
-    case DapMainVewModeDisconnected:
+    case DapMainViewModeDisconnected:
         canvas_draw_str_aligned(canvas, 26, 38, AlignCenter, AlignTop, "----");
         break;
-    case DapMainVewModeSWD:
+    case DapMainViewModeSWD:
         canvas_draw_str_aligned(canvas, 26, 38, AlignCenter, AlignTop, "SWD");
         break;
-    case DapMainVewModeJTAG:
+    case DapMainViewModeJTAG:
         canvas_draw_str_aligned(canvas, 26, 38, AlignCenter, AlignTop, "JTAG");
         break;
     }
@@ -129,7 +145,7 @@ void dap_main_view_set_left_callback(
         true);
 }
 
-void dap_main_view_set_mode(DapMainView* dap_main_view, DapMainVewMode mode) {
+void dap_main_view_set_mode(DapMainView* dap_main_view, DapMainViewMode mode) {
     with_view_model(
         dap_main_view->view, DapMainViewModel * model, { model->mode = mode; }, false);
 }
@@ -157,4 +173,17 @@ void dap_main_view_set_baudrate(DapMainView* dap_main_view, uint32_t baudrate) {
 void dap_main_view_update(DapMainView* dap_main_view) {
     with_view_model(
         dap_main_view->view, DapMainViewModel * model, { UNUSED(model); }, true);
+}
+
+void dap_main_view_set_version(DapMainView* dap_main_view, DapMainViewVersion version) {
+    with_view_model(
+        dap_main_view->view, DapMainViewModel * model, { model->version = version; }, false);
+}
+
+void dap_main_view_set_usb_connected(DapMainView* dap_main_view, bool connected) {
+    with_view_model(
+        dap_main_view->view,
+        DapMainViewModel * model,
+        { model->usb_connected = connected; },
+        false);
 }

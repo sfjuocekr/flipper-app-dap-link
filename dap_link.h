@@ -7,8 +7,16 @@ typedef enum {
     DapModeJTAG,
 } DapMode;
 
+typedef enum {
+    DapVersionUnknown,
+    DapVersionV1,
+    DapVersionV2,
+} DapVersion;
+
 typedef struct {
+    bool usb_connected;
     DapMode dap_mode;
+    DapVersion dap_version;
     uint32_t dap_counter;
     uint32_t cdc_baudrate;
     uint32_t cdc_tx_counter;

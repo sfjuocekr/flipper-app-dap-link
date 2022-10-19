@@ -22,6 +22,7 @@ struct DapApp {
     FuriThread* gui_thread;
 
     DapState state;
+    DapConfig config;
 };
 
 void dap_app_get_state(DapApp* app, DapState* state) {
@@ -33,11 +34,6 @@ void dap_app_get_state(DapApp* app, DapState* state) {
 typedef enum {
     DapThreadEventStop = (1 << 0),
 } DapThreadEvent;
-
-bool dap_thread_check_for_stop() {
-    uint32_t flags = furi_thread_flags_get();
-    return (flags & DapThreadEventStop);
-}
 
 void dap_thread_send_stop(FuriThread* thread) {
     furi_thread_flags_set(furi_thread_get_id(thread), DapThreadEventStop);
@@ -59,13 +55,14 @@ typedef struct {
 } DapPacket;
 
 typedef enum {
-    DapAppRxV1,
-    DapAppRxV2,
-} DapAppEvent;
-
-typedef struct {
-    DapAppEvent event;
-} DapMessage;
+    DAPThreadEventStop = DapThreadEventStop,
+    DAPThreadEventRxV1 = (1 << 1),
+    DAPThreadEventRxV2 = (1 << 2),
+    DAPThreadEventUSBConnect = (1 << 3),
+    DAPThreadEventUSBDisconnect = (1 << 4),
+    DAPThreadEventAll = DAPThreadEventStop | DAPThreadEventRxV1 | DAPThreadEventRxV2 |
+                        DAPThreadEventUSBConnect | DAPThreadEventUSBDisconnect,
+} DAPThreadEvent;
 
 #define USB_SERIAL_NUMBER_LEN 16
 char usb_serial_number[USB_SERIAL_NUMBER_LEN] = {0};
@@ -77,17 +74,24 @@ const char* dap_app_get_serial(DapApp* app) {
 
 static void dap_app_rx1_callback(void* context) {
     furi_assert(context);
-    FuriMessageQueue* queue = context;
-    DapMessage message = {.event = DapAppRxV1};
-
-    furi_check(furi_message_queue_put(queue, &message, 0) == FuriStatusOk);
+    FuriThreadId thread_id = (FuriThreadId)context;
+    furi_thread_flags_set(thread_id, DAPThreadEventRxV1);
 }
 
 static void dap_app_rx2_callback(void* context) {
     furi_assert(context);
-    FuriMessageQueue* queue = context;
-    DapMessage message = {.event = DapAppRxV2};
-    furi_check(furi_message_queue_put(queue, &message, 0) == FuriStatusOk);
+    FuriThreadId thread_id = (FuriThreadId)context;
+    furi_thread_flags_set(thread_id, DAPThreadEventRxV2);
+}
+
+static void dap_app_usb_state_callback(bool state, void* context) {
+    furi_assert(context);
+    FuriThreadId thread_id = (FuriThreadId)context;
+    if(state) {
+        furi_thread_flags_set(thread_id, DAPThreadEventUSBConnect);
+    } else {
+        furi_thread_flags_set(thread_id, DAPThreadEventUSBDisconnect);
+    }
 }
 
 static void dap_app_process_v1() {
@@ -110,7 +114,7 @@ static void dap_app_process_v2() {
 }
 
 void dap_app_vendor_cmd(uint8_t cmd) {
-    // cmsis-dap cmd 81
+    // openocd -c "cmsis-dap cmd 81"
     if(cmd == 0x01) {
         furi_hal_power_reset();
     }
@@ -124,7 +128,6 @@ static int32_t dap_process(void* p) {
     DapState* dap_state = &((DapApp*)p)->state;
 
     // allocate resources
-    FuriMessageQueue* queue = furi_message_queue_alloc(64, sizeof(DapMessage));
     FuriHalUsbInterface* usb_config_prev;
 
     // init dap
@@ -140,29 +143,42 @@ static int32_t dap_process(void* p) {
     // init usb
     usb_config_prev = furi_hal_usb_get_config();
     dap_common_usb_alloc_name(usb_serial_number);
-    dap_common_usb_set_context(queue);
+    dap_common_usb_set_context(furi_thread_get_id(furi_thread_get_current()));
     dap_v1_usb_set_rx_callback(dap_app_rx1_callback);
     dap_v2_usb_set_rx_callback(dap_app_rx2_callback);
+    dap_common_usb_set_state_callback(dap_app_usb_state_callback);
     furi_hal_usb_set_config(&dap_v2_usb_hid, NULL);
 
     // work
-    DapMessage message;
     while(1) {
-        if(furi_message_queue_get(queue, &message, DAP_PROCESS_THREAD_TICK) == FuriStatusOk) {
-            switch(message.event) {
-            case DapAppRxV1:
+        uint32_t events =
+            furi_thread_flags_wait(DAPThreadEventAll, FuriFlagWaitAny, FuriWaitForever);
+
+        if(!(events & FuriFlagError)) {
+            if(events & DAPThreadEventRxV1) {
                 dap_app_process_v1();
                 dap_state->dap_counter++;
-                break;
-            case DapAppRxV2:
+                dap_state->dap_version = DapVersionV1;
+            }
+
+            if(events & DAPThreadEventRxV2) {
                 dap_app_process_v2();
                 dap_state->dap_counter++;
+                dap_state->dap_version = DapVersionV2;
+            }
+
+            if(events & DAPThreadEventUSBConnect) {
+                dap_state->usb_connected = true;
+            }
+
+            if(events & DAPThreadEventUSBDisconnect) {
+                dap_state->usb_connected = false;
+                dap_state->dap_version = DapVersionUnknown;
+            }
+
+            if(events & DAPThreadEventStop) {
                 break;
             }
-        }
-
-        if(dap_thread_check_for_stop()) {
-            break;
         }
     }
 
@@ -170,9 +186,6 @@ static int32_t dap_process(void* p) {
     furi_hal_usb_set_config(usb_config_prev, NULL);
     dap_common_wait_for_deinit();
     dap_common_usb_free_name();
-
-    // free resources
-    furi_message_queue_free(queue);
 
     return 0;
 }

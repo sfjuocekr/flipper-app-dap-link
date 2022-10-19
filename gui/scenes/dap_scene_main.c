@@ -21,18 +21,38 @@ static bool process_dap_state(DapGuiApp* app) {
     if(prev_state->dap_mode != next_state.dap_mode) {
         switch(next_state.dap_mode) {
         case DapModeDisconnected:
-            dap_main_view_set_mode(app->main_view, DapMainVewModeDisconnected);
+            dap_main_view_set_mode(app->main_view, DapMainViewModeDisconnected);
             notification_message(app->notifications, &sequence_blink_stop);
             break;
         case DapModeSWD:
-            dap_main_view_set_mode(app->main_view, DapMainVewModeSWD);
+            dap_main_view_set_mode(app->main_view, DapMainViewModeSWD);
             notification_message(app->notifications, &sequence_blink_start_blue);
             break;
         case DapModeJTAG:
-            dap_main_view_set_mode(app->main_view, DapMainVewModeJTAG);
+            dap_main_view_set_mode(app->main_view, DapMainViewModeJTAG);
             notification_message(app->notifications, &sequence_blink_start_magenta);
             break;
         }
+        need_to_update = true;
+    }
+
+    if(prev_state->dap_version != next_state.dap_version) {
+        switch(next_state.dap_version) {
+        case DapVersionUnknown:
+            dap_main_view_set_version(app->main_view, DapMainViewVersionUnknown);
+            break;
+        case DapVersionV1:
+            dap_main_view_set_version(app->main_view, DapMainViewVersionV1);
+            break;
+        case DapVersionV2:
+            dap_main_view_set_version(app->main_view, DapMainViewVersionV2);
+            break;
+        }
+        need_to_update = true;
+    }
+
+    if(prev_state->usb_connected != next_state.usb_connected) {
+        dap_main_view_set_usb_connected(app->main_view, next_state.usb_connected);
         need_to_update = true;
     }
 
