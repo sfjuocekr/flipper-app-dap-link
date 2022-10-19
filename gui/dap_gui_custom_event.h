@@ -2,7 +2,6 @@
 
 typedef enum {
     DapAppCustomEventConfig,
-    DapAppCustomEventSaveConfig,
-    DapAppCustomEventLoadConfig,
     DapAppCustomEventHelp,
+    DapAppCustomEventAbout,
 } DapAppCustomEvent;

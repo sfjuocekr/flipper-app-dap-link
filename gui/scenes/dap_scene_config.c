@@ -1,7 +1,6 @@
 #include "../dap_gui_i.h"
 
 static const char* swd_pins[] = {[DapSwdPinsPA7PA6] = "2,3", [DapSwdPinsPA14PA13] = "10,12"};
-
 static const char* uart_pins[] = {[DapUartTypeUSART1] = "13,14", [DapUartTypeLPUART1] = "15,16"};
 static const char* uart_swap[] = {[DapUartTXRXNormal] = "No", [DapUartTXRXSwap] = "Yes"};
 
@@ -45,10 +44,7 @@ static void ok_cb(void* context, uint32_t index) {
         view_dispatcher_send_custom_event(app->view_dispatcher, DapAppCustomEventHelp);
         break;
     case 4:
-        view_dispatcher_send_custom_event(app->view_dispatcher, DapAppCustomEventSaveConfig);
-        break;
-    case 5:
-        view_dispatcher_send_custom_event(app->view_dispatcher, DapAppCustomEventLoadConfig);
+        view_dispatcher_send_custom_event(app->view_dispatcher, DapAppCustomEventAbout);
         break;
     default:
         break;
@@ -76,10 +72,8 @@ void dap_scene_config_on_enter(void* context) {
     variable_item_set_current_value_index(item, config->uart_swap);
     variable_item_set_current_value_text(item, uart_swap[config->uart_swap]);
 
-    // 3, 4, 5 indexes
     item = variable_item_list_add(var_item_list, "Help and Pinout", 0, NULL, NULL);
-    item = variable_item_list_add(var_item_list, "Save Config", 0, NULL, NULL);
-    item = variable_item_list_add(var_item_list, "Load Config", 0, NULL, NULL);
+    item = variable_item_list_add(var_item_list, "About", 0, NULL, NULL);
 
     variable_item_list_set_selected_item(
         var_item_list, scene_manager_get_scene_state(app->scene_manager, DapSceneConfig));
@@ -94,6 +88,9 @@ bool dap_scene_config_on_event(void* context, SceneManagerEvent event) {
     if(event.type == SceneManagerEventTypeCustom) {
         if(event.event == DapAppCustomEventHelp) {
             scene_manager_next_scene(app->scene_manager, DapSceneHelp);
+            return true;
+        } else if(event.event == DapAppCustomEventAbout) {
+            scene_manager_next_scene(app->scene_manager, DapSceneAbout);
             return true;
         }
     }
