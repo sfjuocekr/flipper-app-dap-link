@@ -2,7 +2,7 @@
 
 #define DAP_VERSION_APP "0.1.0"
 #define DAP_DEVELOPED "Dr_Zlo"
-#define DAP_GITHUB "https://github.com/DrZlo13/flipper_zero_dap_link"
+#define DAP_GITHUB "https://github.com/flipperdevices/flipperzero-firmware"
 
 void dap_scene_about_on_enter(void* context) {
     DapGuiApp* app = context;
@@ -22,7 +22,8 @@ void dap_scene_about_on_enter(void* context) {
     furi_string_cat_printf(
         temp_str,
         "Supported protocols:\n"
-        "SWD, JTAG, UART\n");
+        "SWD, JTAG, UART\n"
+        "DAP v1 (cmsis_backend hid), DAP v2 (cmsis_backend usb_bulk), VCP\n");
 
     widget_add_text_box_element(
         app->widget,

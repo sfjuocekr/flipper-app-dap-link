@@ -34,8 +34,8 @@
 #define DAP_CDC_INTERVAL 0
 #define DAP_CDC_COMM_INTERVAL 1
 
-#define DAP_HID_VID 0x6666
-#define DAP_HID_PID 0x9930
+#define DAP_HID_VID 0x0483
+#define DAP_HID_PID 0x5740
 
 #define DAP_USB_EP0_SIZE 8
 
@@ -568,12 +568,12 @@ void dap_common_usb_set_state_callback(DapStateCallback callback) {
 static void* dap_usb_alloc_string_descr(const char* str) {
     furi_assert(str);
 
-    uint8_t len = strlen(str);
-    uint8_t wlen = (len + 1) * sizeof(uint16_t);
+    size_t len = strlen(str);
+    size_t wlen = (len + 1) * sizeof(uint16_t);
     struct usb_string_descriptor* dev_str_desc = malloc(wlen);
     dev_str_desc->bLength = wlen;
     dev_str_desc->bDescriptorType = USB_DTYPE_STRING;
-    for(uint8_t i = 0; i < len; i++) {
+    for(size_t i = 0; i < len; i++) {
         dev_str_desc->wString[i] = str[i];
     }
 
@@ -618,21 +618,10 @@ static void hid_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     if(dap_state.semaphore_v2 == NULL) dap_state.semaphore_v2 = furi_semaphore_alloc(1, 1);
     if(dap_state.semaphore_cdc == NULL) dap_state.semaphore_cdc = furi_semaphore_alloc(1, 1);
 
-    usb_hid.dev_descr->idVendor = DAP_HID_VID;
-    usb_hid.dev_descr->idProduct = DAP_HID_PID;
-
     usbd_reg_config(dev, hid_ep_config);
     usbd_reg_control(dev, hid_control);
 
     usbd_connect(dev, true);
-}
-
-static bool deinit_flag = false;
-
-void dap_common_wait_for_deinit() {
-    while(!deinit_flag) {
-        furi_delay_ms(50);
-    }
 }
 
 static void hid_deinit(usbd_device* dev) {
@@ -647,12 +636,6 @@ static void hid_deinit(usbd_device* dev) {
 
     usbd_reg_config(dev, NULL);
     usbd_reg_control(dev, NULL);
-
-    free(usb_hid.str_manuf_descr);
-    free(usb_hid.str_prod_descr);
-
-    FURI_SW_MEMBARRIER();
-    deinit_flag = true;
 }
 
 static void hid_on_wakeup(usbd_device* dev) {
